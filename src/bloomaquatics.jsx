@@ -346,6 +346,61 @@ function InvModal({ costCenters, onSave, onClose }) {
 }
 
 /* ── SALE MODAL ──────────────────────────────────────────── */
+/* ── DETAIL MODAL (Vitrina tap target) ───────────────────── */
+function DetailModal({ item, costCenters, onClose }) {
+  const url       = photoUrl(item.photoPath);
+  const cc        = costCenters.find(c=>c.id===item.ccId);
+  const isPlant   = isMulti(item.type);   // plantas y animales: cosecha/cría multi-venta
+  const sales     = item.sales||[];
+  return (
+    <Modal title={`${typeIcon(item.type)} ${item.name}`} onClose={onClose}>
+      {url && (
+        <div style={{ width:'100%', aspectRatio:'1', borderRadius:14, overflow:'hidden',
+          marginBottom:16, background:'#f3f4f6' }}>
+          <img src={url} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt=""/>
+        </div>
+      )}
+      <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+        <span style={{ padding:'5px 12px', borderRadius:20, fontSize:12, fontWeight:700,
+          background:'#f5f3ff', color:'#7c3aed' }}>{typeLabel(item.type)}</span>
+        <span style={{ padding:'5px 12px', borderRadius:20, fontSize:12, fontWeight:700,
+          background: item.isAvailable!==false ? '#f0fdf4' : '#fef2f2',
+          color: item.isAvailable!==false ? '#16a34a' : '#dc2626' }}>
+          {item.isAvailable!==false ? '✅ Disponible' : '⛔ No disponible'}
+        </span>
+      </div>
+      {item.description && (
+        <div style={{ ...S.card, background:'#f0fdfa', borderColor:'#a5f3fc' }}>
+          <div style={{ fontSize:13, color:'#374151', lineHeight:1.6 }}>{item.description}</div>
+        </div>
+      )}
+      <div style={S.card}>
+        {item.sellingPrice!=null && (
+          <div style={{ fontSize:22, fontWeight:700, color:'#16a34a', marginBottom:6 }}>{fmt(item.sellingPrice)}</div>
+        )}
+        {cc && (
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
+            <Avatar name={cc.name} color={cc.color||'#7c3aed'} size={26}/>
+            <span style={{ fontSize:13, color:'#6b7280' }}>{cc.name}</span>
+          </div>
+        )}
+      </div>
+      {isPlant && sales.length>0 && (
+        <div style={{ marginTop:6 }}>
+          <div style={{ ...S.label, marginBottom:8 }}>Historial de {item.type==='animal'?'ventas':'cosechas'}</div>
+          {sales.map(s=>(
+            <div key={s.id} style={{ display:'flex', justifyContent:'space-between',
+              padding:'9px 0', borderBottom:'1px solid #f3f4f6', fontSize:13 }}>
+              <span style={{ color:'#6b7280' }}>{s.saleDate}</span>
+              <span style={{ fontWeight:700, color:'#16a34a' }}>{fmt(s.salePrice)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function SaleModal({ item, onSave, onClose }) {
   const [saleDate,setSaleDate] = useState(today());
   const [salePrice,setSP]      = useState(item.sellingPrice!=null?String(item.sellingPrice):'');
