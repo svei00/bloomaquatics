@@ -700,6 +700,8 @@ function RepublishMode({ inventory, costCenters, onClose }) {
   });
   const [screen, setScreen] = useState(selected.length > 0 ? 'list' : 'select');
   const [showAll, setShowAll] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(() =>
+    parseInt(sessionStorage.getItem(REPUBLISH_IDX_KEY) || '0', 10) || 0);
   const scrollRef = useRef(null);
   const items = publishable.filter(i => selected.includes(i.id));
 
@@ -707,7 +709,7 @@ function RepublishMode({ inventory, costCenters, onClose }) {
     sessionStorage.setItem(REPUBLISH_SEL_KEY, JSON.stringify(selected));
   }, [selected]);
 
-  // Rehidratar posición al montar (split-screen puede recargar la pestaña).
+  // Restore scroll position on mount (split-screen app switching can reload the tab).
   useEffect(() => {
     if (screen !== 'list' || !scrollRef.current) return;
     const idx = parseInt(sessionStorage.getItem(REPUBLISH_IDX_KEY) || '0', 10) || 0;
@@ -717,10 +719,26 @@ function RepublishMode({ inventory, costCenters, onClose }) {
   const handleScroll = () => {
     if (!scrollRef.current) return;
     const idx = Math.round(scrollRef.current.scrollLeft / scrollRef.current.clientWidth);
+    setActiveIdx(idx);
     sessionStorage.setItem(REPUBLISH_IDX_KEY, String(idx));
   };
 
+  // Tap a dot (or arrow) to jump to that card; swiping still works exactly as before —
+  // the carousel underneath is unchanged, dots are just an indicator + shortcut.
+  // The active dot updates immediately (not via the scroll event) so feedback is instant.
+  const goTo = idx => {
+    if (!scrollRef.current) return;
+    const clamped = Math.max(0, Math.min(idx, items.length - 1));
+    setActiveIdx(clamped);
+    sessionStorage.setItem(REPUBLISH_IDX_KEY, String(clamped));
+    scrollRef.current.scrollTo({ left: clamped * scrollRef.current.clientWidth, behavior: 'smooth' });
+  };
+
   const toggle = id => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+
+  // Dots read well up to ~10 items; beyond that they get too small to tap at
+  // half-screen, so fall back to a "4 / 17" counter with prev/next arrows.
+  const MAX_DOTS = 10;
 
   return (
     <div style={{ position:'absolute', inset:0, zIndex:500, background:'#f9fafb',
@@ -786,6 +804,33 @@ function RepublishMode({ inventory, costCenters, onClose }) {
               ? <div style={{ margin:'auto', color:'#9ca3af', fontSize:14 }}>Nada seleccionado</div>
               : items.map(item => <RepublishCard key={item.id} item={item} costCenters={costCenters}/>)}
           </div>
+          {items.length > 1 && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+              gap:8, padding:'8px 16px', flexShrink:0 }}>
+              {items.length <= MAX_DOTS
+                ? items.map((it, i) => (
+                    <button key={it.id} onClick={() => goTo(i)} aria-label={`Ir al item ${i+1}`}
+                      style={{ width:28, height:28, padding:0, border:'none', background:'none',
+                        cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <span style={{ width: i===activeIdx ? 10 : 8, height: i===activeIdx ? 10 : 8,
+                        borderRadius:'50%', background: i===activeIdx ? '#7c3aed' : '#d1d5db',
+                        transition:'all 0.15s' }}/>
+                    </button>
+                  ))
+                : <>
+                    <button onClick={() => goTo(activeIdx - 1)} disabled={activeIdx === 0}
+                      style={{ minWidth:44, minHeight:36, border:'none', borderRadius:10,
+                        background:'#f5f3ff', color:'#7c3aed', fontSize:16, fontWeight:700,
+                        cursor:'pointer', opacity: activeIdx === 0 ? 0.35 : 1 }}>‹</button>
+                    <span style={{ fontSize:13, fontWeight:700, color:'#6b7280', minWidth:56,
+                      textAlign:'center' }}>{Math.min(activeIdx + 1, items.length)} / {items.length}</span>
+                    <button onClick={() => goTo(activeIdx + 1)} disabled={activeIdx >= items.length - 1}
+                      style={{ minWidth:44, minHeight:36, border:'none', borderRadius:10,
+                        background:'#f5f3ff', color:'#7c3aed', fontSize:16, fontWeight:700,
+                        cursor:'pointer', opacity: activeIdx >= items.length - 1 ? 0.35 : 1 }}>›</button>
+                  </>}
+            </div>
+          )}
           <div style={{ padding:'12px 16px', background:'#fff', borderTop:'1px solid #e5e7eb',
             flexShrink:0 }}>
             <button onClick={() => setScreen('select')} style={{ ...S.btn('#f3f4f6', '#374151') }}>
