@@ -365,6 +365,34 @@ app.post('/api/inventory/:itemId/sales', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Temporary plant copy review link ──────────────────────
+// No login exists on this server, so anything served here must have no
+// cost data in it (see docs/plant-copy-review/public.html). The clock
+// starts on whoever opens the link first, not at deploy time, so a link
+// that sits unopened doesn't burn its own window.
+const REVIEW_DIR    = path.join(__dirname, 'docs', 'plant-copy-review');
+const REVIEW_MARKER = path.join(REVIEW_DIR, '.published-at');
+
+app.get('/plant-review', (_req, res) => {
+  const cfgPath  = path.join(REVIEW_DIR, 'link-config.json');
+  const filePath = path.join(REVIEW_DIR, 'public.html');
+  if (!fs.existsSync(cfgPath) || !fs.existsSync(filePath)) {
+    return res.status(404).send('Not found.');
+  }
+
+  const { hours } = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  if (!fs.existsSync(REVIEW_MARKER)) {
+    fs.writeFileSync(REVIEW_MARKER, new Date().toISOString());
+  }
+  const publishedAt = new Date(fs.readFileSync(REVIEW_MARKER, 'utf8')).getTime();
+  const expiresAt    = publishedAt + hours * 60 * 60 * 1000;
+
+  if (Date.now() > expiresAt) {
+    return res.status(410).send('This review link has expired. Ask Svei to re-publish it if you still need it.');
+  }
+  res.sendFile(filePath);
+});
+
 // ── Catch-all → React ─────────────────────────────────────
 app.get('*', (req, res) => {
   if (req.path.includes('.')) return res.status(404).send('Not Found');

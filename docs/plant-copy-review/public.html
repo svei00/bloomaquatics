@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bloom Aquatics · Plant Listing Copy Review</title>
+<style>
+  :root{
+    --purple:#7c3aed; --purple-soft:#f5f3ff; --purple-line:#ede9fe;
+    --ink:#111827; --muted:#6b7280; --faint:#9ca3af;
+    --line:#e5e7eb; --bg:#f9fafb; --card:#ffffff;
+    --green:#16a34a; --green-soft:#f0fdf4;
+    --amber:#d97706; --amber-soft:#fffbeb;
+    --red:#dc2626;   --red-soft:#fef2f2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.6;-webkit-text-size-adjust:100%}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px}
+
+  header{background:var(--card);border:1px solid var(--line);border-radius:16px;
+         padding:20px;margin-bottom:14px}
+  h1{margin:0 0 4px;font-size:22px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:14px;margin:0}
+  .sub em{color:var(--purple);font-style:normal;font-weight:600}
+
+  .expiry{margin-top:14px;background:var(--amber-soft);border:1px solid #fde68a;
+          border-radius:10px;padding:10px 12px;font-size:12.5px;color:#92400e}
+
+  .how{margin-top:14px;background:var(--purple-soft);border:1px solid var(--purple-line);
+       border-radius:12px;padding:14px 16px;font-size:14px}
+  .how b{color:var(--purple)}
+  .how ol{margin:8px 0 0;padding-left:20px}
+  .how li{margin-bottom:4px}
+
+  .bar{position:sticky;top:0;z-index:20;background:var(--bg);
+       padding:10px 0;margin-bottom:12px;border-bottom:1px solid var(--line)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .chip{padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;
+        border:1.5px solid var(--line);background:transparent;color:var(--muted);
+        font-family:inherit;transition:.12s}
+  .chip:hover{border-color:var(--purple)}
+  .chip.on{border-color:var(--purple);background:#7c3aed18;color:var(--purple)}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .btn{padding:10px 16px;border-radius:10px;border:none;font-size:14px;font-weight:600;
+       cursor:pointer;font-family:inherit}
+  .btn-main{background:var(--purple);color:#fff}
+  .btn-mail{background:var(--green);color:#fff}
+  .btn-ghost{background:var(--card);color:var(--muted);border:1.5px solid var(--line)}
+  .tally{font-size:13px;color:var(--muted);margin-left:auto}
+  .tally b{color:var(--ink)}
+
+  table{width:100%;border-collapse:separate;border-spacing:0 10px}
+  thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+           color:var(--faint);font-weight:700;padding:0 12px 4px}
+  tbody tr{background:var(--card)}
+  tbody td{border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+           padding:14px 12px;vertical-align:top}
+  tbody td:first-child{border-left:1px solid var(--line);border-radius:14px 0 0 14px}
+  tbody td:last-child{border-right:1px solid var(--line);border-radius:0 14px 14px 0}
+  tr.keep td{background:var(--green-soft);border-color:#bbf7d0}
+  tr.skip td{opacity:.5}
+  tr.flagged td:first-child{box-shadow:inset 4px 0 0 var(--amber)}
+
+  .col-now{width:23%} .col-new{width:46%} .col-act{width:14%}
+
+  .now-name{font-weight:700;font-size:15px;margin-bottom:6px;word-break:break-word}
+  .kv{font-size:12.5px;color:var(--muted);margin-bottom:3px}
+  .kv b{color:var(--ink);font-weight:600}
+  .empty{color:var(--faint);font-style:italic}
+
+  .new-title{width:100%;font-family:inherit;font-size:15px;font-weight:700;color:var(--ink);
+             border:1.5px solid var(--line);border-radius:9px;padding:9px 11px;margin-bottom:8px;
+             background:#fff}
+  .new-desc{width:100%;font-family:inherit;font-size:14px;color:var(--ink);line-height:1.65;
+            border:1.5px solid var(--line);border-radius:9px;padding:10px 11px;
+            min-height:104px;resize:vertical;background:#fff}
+  .new-title:focus,.new-desc:focus{outline:none;border-color:var(--purple);
+            box-shadow:0 0 0 3px #7c3aed22}
+  .meter{display:flex;justify-content:space-between;font-size:11.5px;color:var(--faint);
+         margin-top:5px}
+  .meter .ok{color:var(--green);font-weight:600}
+  .meter .over{color:var(--amber);font-weight:600}
+
+  .flag{display:block;font-size:12.5px;border-radius:9px;padding:9px 11px;margin-top:9px}
+  .flag-legal{background:var(--red-soft);border:1px solid #fecaca;color:#991b1b}
+  .flag-name{background:var(--purple-soft);border:1px solid var(--purple-line);color:#5b21b6}
+  .flag b{font-weight:700}
+
+  .dec{display:flex;flex-direction:column;gap:6px}
+  .dec button{padding:9px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;
+              border:1.5px solid var(--line);background:#fff;color:var(--muted);
+              font-family:inherit;transition:.12s}
+  .dec button:hover{border-color:var(--muted)}
+  .dec button.on-keep{background:var(--green);border-color:var(--green);color:#fff}
+  .dec button.on-skip{background:#6b7280;border-color:#6b7280;color:#fff}
+  .note{width:100%;font-family:inherit;font-size:12.5px;padding:7px 9px;border-radius:8px;
+        border:1.5px solid var(--line);margin-top:2px;background:#fff}
+
+  footer{color:var(--faint);font-size:12.5px;text-align:center;padding:26px 10px 40px}
+
+  @media (max-width:860px){
+    .wrap{padding:12px}
+    thead{display:none}
+    table,tbody,tr,td{display:block;width:100%}
+    table{border-spacing:0}
+    tbody tr{border:1px solid var(--line);border-radius:16px;margin-bottom:12px;
+             overflow:hidden;background:var(--card)}
+    tbody td{border:none;padding:12px 14px}
+    tbody td:first-child{border-radius:0;background:#fafafa;border-bottom:1px solid var(--line)}
+    tbody td:last-child{border-radius:0;border-top:1px solid var(--line)}
+    tr.flagged td:first-child{box-shadow:inset 0 -3px 0 var(--amber)}
+    .dec{flex-direction:row}
+    .dec button{flex:1}
+    .note{flex-basis:100%}
+    .tally{margin-left:0;width:100%}
+  }
+  @media print{ .bar,.how,.dec,footer{display:none} body{background:#fff} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>🌿 Plant Listing Copy — Review Sheet</h1>
+  <p class="sub">Suggested titles and descriptions for the <em>44 plants</em> currently in inventory. Nothing here is saved to the database — this is only a proposal for you to approve.</p>
+
+  <div class="expiry" id="expiry-note">⏳ This link is temporary and will stop working automatically. Ask for a fresh one if it expires before you're done.</div>
+
+  <div class="how">
+    <b>How to use this page</b>
+    <ol>
+      <li><b>Read</b> the suggested title and description. Edit any text directly in the box — it's yours to change.</li>
+      <li>Press <b>Keep</b> if you want it, or <b>Skip</b> if you'd rather leave that plant as it is.</li>
+      <li>Your work saves automatically in this browser. You can close the page and come back later, as long as the link hasn't expired.</li>
+      <li>When you're done, press <b>Export decisions</b> to download the file, then <b>Email me the results</b> to send it along.</li>
+    </ol>
+  </div>
+</header>
+
+<div class="bar">
+  <div class="chips" id="filters"></div>
+  <div class="actions">
+    <button class="btn btn-main" id="export">⬇ Export decisions</button>
+    <button class="btn btn-mail" id="mail">📧 Email me the results</button>
+    <button class="btn btn-ghost" id="keepall">Keep all shown</button>
+    <button class="btn btn-ghost" id="reset">Reset</button>
+    <span class="tally" id="tally"></span>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th class="col-now">What's in the app now</th>
+      <th class="col-new">Suggested title &amp; description</th>
+      <th class="col-act">Your call</th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<footer>
+  Bloom Aquatics · copy review sheet · this page will stop working after its link expires
+</footer>
+</div>
+
+<script>
+/* Public copy of the review sheet: purchase cost and cost-based pricing
+   notes are intentionally left out, since this URL has no login and
+   anyone with the link can open it. */
+const PLANTS = [
+{id:"mred5a2egzg6z",now:"Anubias coffefolia Sydney",price:null,desc:null,photo:false,
+ title:"Anubias barteri var. coffeefolia",
+ body:"Thick, deeply corrugated leaves that open copper-bronze and harden off to dark green. A slow grower that holds its shape for months, with no CO2 or strong light required. Glue or tie the rhizome onto wood or stone — buried in substrate it will rot.",
+ name:"\"Sydney\" looks like the name of the person you bought from. That belongs in your notes, not in a public listing title."},
+
+{id:"mred0ep12084p",now:"Bucephalandra Dark Skeleton King",price:null,desc:null,photo:false,
+ title:"Bucephalandra 'Dark Skeleton King'",
+ body:"A dark, compact Bucephalandra with narrow leaves and pronounced skeletal veining that throws blue iridescence under good light. Grows very slowly, so a scape built around it stays put. Attach the rhizome to hardscape and leave it alone."},
+
+{id:"mreczh248hj3o",now:"Cryptocoryne Flamingo",price:null,desc:null,photo:false,
+ title:"Cryptocoryne wendtii 'Flamingo'",
+ body:"One of the few genuinely pink plants in the hobby. New leaves push out soft pink and hold that colour rather than fading to green. Slow and deliberate — feed the roots and expect it to melt back after planting before it settles in."},
+
+{id:"mrecyt70y2baa",now:"Cryptocoryne Balansae",price:null,desc:null,photo:false,
+ title:"Cryptocoryne crispatula var. balansae",
+ body:"Long ribbed ribbon leaves that ripple in the current and can reach the surface in a taller tank. Undemanding once the roots take hold. Give it a nutrient substrate or root tabs and let it fill a background column."},
+
+{id:"mrecy9iy849zb",now:"Anubias Round Leaf Golden Coin",price:null,desc:null,photo:false,
+ title:"Anubias barteri 'Golden Coin'",
+ body:"Compact Anubias with almost perfectly round leaves on short stems — a midground accent where a full-size barteri would be too heavy. Low light, no CO2, very slow growth. Keep the rhizome above the substrate."},
+
+{id:"mrecw0u6fllwr",now:"Anubias Barteri 'Gigantea",price:null,desc:null,photo:false,
+ title:"Anubias barteri var. gigantea",
+ body:"The largest of the common Anubias, with long spear-shaped leaves that carry a big tank on their own. Same forgiving care as the rest of the genus: low light, no CO2, rhizome tied above the substrate rather than buried.",
+ name:"Title has an unclosed quote mark. Cleaned up here."},
+
+{id:"mrecunl0nk5d8",now:"Anubias Barteri",price:null,desc:null,photo:false,
+ title:"Anubias barteri",
+ body:"The workhorse Anubias. Thick leathery leaves that fish and snails leave alone, tolerant of low light and a missed water change. Attach the rhizome to wood or rock. Slow growth means it almost never needs trimming."},
+
+{id:"mrectucjbhus0",now:"Cryptocoryne Florida",price:null,desc:null,photo:false,
+ title:"Cryptocoryne wendtii 'Florida Sunset'",
+ body:"A wendtii-type crypt with cream and pink variegation running through olive leaves. The contrast sharpens under moderate light. A root feeder — nutrient substrate or root tabs. Like all crypts it may melt after a move, then return with leaves adapted to your water.",
+ name:"Please confirm this is 'Florida Sunset' — that's the variety usually sold under the short name 'Florida'. If it's something else, correct the title."},
+
+{id:"mrecsjke1xm49",now:"Cryptocoryne Nurii",price:null,desc:null,photo:false,
+ title:"Cryptocoryne nurii",
+ body:"A collector's crypt with wavy-edged leaves in olive through purple-brown, usually finely spotted. Slower and more particular than the common crypts — soft, warm, stable water suits it best. Worth the patience for the leaf pattern alone."},
+
+{id:"mre73e2rhubo8",now:"Tiger lottos Ian",price:20,desc:null,photo:false,
+ title:"Tiger Lotus (Nymphaea lotus)",
+ body:"Grows from a bulb and throws up broad, red-mottled pads on long stems. Fast and hungry once it wakes up. Trim the stems that reach for the surface if you want it bushy underwater — left alone it will float pads across the top and shade everything below.",
+ name:"Two problems: \"lottos\" is a typo for \"lotus\", and \"Ian\" looks like a supplier name that shouldn't be in a public title."},
+
+{id:"mre71gk3e1tzd",now:"Flame Moss",price:7,desc:null,photo:false,
+ title:"Flame Moss (Taxiphyllum 'Flame')",
+ body:"Grows upward in twisting, flame-shaped columns instead of spreading flat, which sets it apart from every carpeting moss. Tie a thin layer to wood and let it climb. No CO2 needed; moderate light keeps the columns tight."},
+
+{id:"mr45dplve27b7",now:"Water jacintos",price:5,desc:null,photo:false,
+ title:"Water Hyacinth (Eichhornia crassipes)",
+ body:"Floating pond plant with glossy leaves on inflated, buoyant stalks. Pulls nutrients out of the water quickly, which makes it useful for shading a tub or pond and starving algae of what it needs.",
+ legal:"Restricted plant. Water hyacinth is one of the most heavily regulated aquatic plants in the United States — California has spent decades and tens of millions controlling it in the Delta, and it cannot be shipped into the state. <b>Do not list this on any surface that ships, and confirm local sale is allowed before offering it at all.</b> Please check with Svei before this one goes public."},
+
+{id:"mqykopijy6clu",now:"Anubia panda marbel",price:30,desc:null,photo:false,
+ title:"Anubias 'Panda' (variegated)",
+ body:"Variegated Anubias marbled in white and green, with the pattern falling differently on every leaf, so no two plants match. Care is the usual Anubias routine — low light, no CO2, rhizome exposed — but slower still, because the white tissue carries no chlorophyll.",
+ name:"Spelling: \"Anubia panda marbel\" → \"Anubias 'Panda'\". Worth getting right, since this is your highest-priced plant."},
+
+{id:"mqijw3mqs30su",now:"Java Fern Sydney",price:10,desc:null,photo:false,
+ title:"Java Fern (Microsorum pteropus)",
+ body:"Hard to kill and forgiving of almost any water. Attach it to wood or rock — the rhizome rots if you bury it. New plantlets form along old leaves; snip them off and tie them down to spread it through the tank. No CO2, low light, no fuss.",
+ name:"\"Sydney\" is a supplier name — drop it from the public title. Also note this is the same species as \"Helecho de java\" further down; you may want one listing, not two."},
+
+{id:"mqijseeb6erdk",now:"Tiger Lotus Sydney",price:20,desc:"",photo:false,
+ title:"Tiger Lotus (Nymphaea lotus)",
+ body:"Grows from a bulb and sends up broad, red-mottled pads on long stems. Fast and hungry once established. Keep trimming the stems that climb toward the light if you want it to stay compact and bushy down in the scape.",
+ name:"Supplier name \"Sydney\" in the title again. You have three Tiger Lotus entries in total — consider merging them into one listing with a quantity."},
+
+{id:"mqd9tkg2pr38e",now:"Anubias coffefolia",price:15,desc:null,photo:false,
+ title:"Anubias barteri var. coffeefolia",
+ body:"Thick, deeply corrugated leaves that open copper-bronze before hardening to dark green. Slow, undemanding, and untouched by most fish. Tie or glue the rhizome to hardscape and keep it clear of the substrate.",
+ name:"Spelling: \"coffefolia\" → \"coffeefolia\"."},
+
+{id:"mpsvgvb2a5dm1",now:"Echinodorus red flame",price:15,desc:null,photo:false,
+ title:"Echinodorus 'Red Flame'",
+ body:"A compact sword whose olive leaves fill with red blotching as the plant matures, so it deepens in colour the longer you keep it. A heavy root feeder — root tabs or a nutrient substrate make a visible difference. Stronger light brings out more red."},
+
+{id:"mpsvf9x3gq70d",now:"Cryptocoryne parva",price:5,desc:null,photo:false,
+ title:"Cryptocoryne parva",
+ body:"The smallest crypt in the hobby and the only one that genuinely works as a foreground plant. It grows slowly enough to test your patience, but once settled it holds a tidy cluster two to three inches tall. Plant the individual plantlets a finger-width apart."},
+
+{id:"mprhsuuo64eju",now:"Ozelot red sword",price:15,desc:null,photo:false,
+ title:"Echinodorus 'Ozelot' Red",
+ body:"A sword with deep red new growth speckled in darker red, ageing toward bronze-green. It gets large, so plan a background spot in a tank of twenty gallons or more. Feed the roots and it will carry the back of a scape on its own."},
+
+{id:"mp7r8qoxox7ar",now:"Tiger lotus",price:17,desc:"Se compraron 12 lotos",photo:false,
+ title:"Tiger Lotus (Nymphaea lotus)",
+ body:"Grows from a bulb and pushes out broad, red-mottled pads on long stems. Quick to establish and a heavy feeder. Trim the tallest stems to keep it compact, or let a few reach the surface for shade and cover.",
+ name:"Current description is an internal purchasing note in Spanish (\"Se compraron 12 lotos\") — that is inventory bookkeeping, not customer copy. You have three Tiger Lotus entries at different prices; consider settling on one."},
+
+{id:"motimpkpr0n2q",now:"Helecho de java",price:10,desc:null,photo:false,
+ title:"Java Fern (Microsorum pteropus)",
+ body:"Nearly indestructible and happy in water most plants sulk in. Tie or glue it to wood or rock — burying the rhizome kills it. It reproduces by growing baby plants along the leaf edges, which you can detach and attach elsewhere. No CO2 required.",
+ name:"Same plant as \"Java Fern Sydney\" above. Two entries for one species will look like a mistake in a public catalog — worth merging."},
+
+{id:"mof8quepru8pz",now:"Red root",price:5,desc:null,photo:true,
+ title:"Red Root Floater (Phyllanthus fluitans)",
+ body:"A floating plant whose small round leaves blush deep red under strong light, trailing red roots beneath. It needs a calm surface — a strong filter outflow pushes it around and keeps it green. Good overhead cover for shy fish and shrimp.",
+ name:"Please confirm this is Red Root Floater and not Rotala rotundifolia. Both get called \"red root\" and they are completely different plants."},
+
+{id:"moawc08mlnzhw",now:"Parrot",price:2,desc:"Tallo",photo:true,
+ title:"Parrot Feather (Myriophyllum aquaticum) — sold per stem",
+ body:"Feathery, whorled foliage on upright stems that grow above the waterline in ponds and tubs. Fast growing and easy to propagate from cuttings.",
+ legal:"Restricted plant. Parrot feather is a listed noxious weed in California and prohibited or regulated in a number of other states. <b>Confirm the exact species and the legal position before listing this anywhere public.</b> If it turns out to be a different \"parrot\" plant, this flag may not apply — please check with Svei.",
+ name:"Current description is the single Spanish word \"Tallo\" (stem). The per-stem unit is useful information, so I've moved it into the title where a buyer will actually see it."},
+
+{id:"mngwqhi2eel14",now:"Vallisneria Americana",price:2,desc:"Se vende por tallo",photo:true,
+ title:"Vallisneria americana — sold per plant",
+ body:"Tall ribbon leaves that rise to the surface and lay across it, spreading by runners into a background hedge over a season. One of the easiest plants to grow in hard water. Plant the roots but keep the crown above the substrate line.",
+ name:"Currently marked unavailable in the app — clear that flag if it's back in stock. Current description \"Se vende por tallo\" is in Spanish; moved to the title in English so buyers understand the unit."},
+
+{id:"mngwo0c8ivpen",now:"Nomaphila Stricta (Siamensis)",price:2,desc:null,photo:true,
+ title:"Hygrophila corymbosa 'Siamensis' — sold per stem",
+ body:"A fast stem plant with big paddle-shaped leaves. It grows quickly enough to soak up spare nutrients, which makes it genuinely useful in a young tank still finding its balance. Top it and replant the cuttings to thicken the group.",
+ name:"\"Nomaphila stricta\" is the old name — the plant is sold today as Hygrophila corymbosa. Keeping the old name in brackets helps buyers who learned it that way."},
+
+{id:"mngwm2pmn6wnq",now:"Cryptocoryne Albida Costata",price:null,desc:null,photo:false,
+ title:"Cryptocoryne albida 'Costata'",
+ body:"Narrow bronze-brown leaves with a hammered texture, staying smaller than most crypts. It suits a midground gap or the side of a nano tank. A root feeder, slow, and likely to melt once after planting before it settles."},
+
+{id:"mngw92t641xy4",now:"Limnophila",price:2,desc:"Se vende por tallo",photo:true,
+ title:"Limnophila sessiliflora — sold per stem",
+ body:"A fine, feathery stem plant that grows fast in bright light and forms a soft green thicket. Pinch the tops and replant them to fill a background in a few weeks. No CO2 needed, though it comes in denser with it.",
+ name:"Spanish description moved into the title as the unit. Please confirm the species is sessiliflora; there are several Limnophila in the trade."},
+
+{id:"mngw7u15ef4lt",now:"Java Moss",price:7,desc:null,photo:false,
+ title:"Java Moss (Taxiphyllum barbieri)",
+ body:"The default beginner moss, and deservedly so: it grows in almost any light, wants no CO2, and grips whatever you tie it to. Shrimp graze it constantly and fry disappear into it. Trim it back now and then or it turns into a loose ball."},
+
+{id:"mngw6rjd9n4og",now:"Musgo Llorón",price:7,desc:null,photo:true,
+ title:"Weeping Moss (Vesicularia ferriei)",
+ body:"Grows in arching fronds that hang downward, so draped over a branch it reads like a miniature willow. Tie a thin layer and let it fill in. Moderate light keeps the shape tight — in low light it stretches and loses the weeping look.",
+ name:"Title is currently in Spanish. \"Weeping Moss\" is what an English-speaking buyer will search for."},
+
+{id:"mngw5c8vw4u1x",now:"Cryptocoryne Undulara Hybrid",price:null,desc:null,photo:false,
+ title:"Cryptocoryne undulata (hybrid)",
+ body:"Wavy-edged leaves ranging olive through red-brown, taller than wendtii and narrower than balansae. It adapts to most water once it settles. Plant it, feed the roots, and then leave it be — crypts resent being moved.",
+ name:"Spelling: \"Undulara\" → \"undulata\"."},
+
+{id:"mngw1tbkd66kb",now:"Cryptocoryne Retropiealis",price:7,desc:"Por planta",photo:true,
+ title:"Cryptocoryne retrospiralis — sold per plant",
+ body:"Narrow, spiralling leaves that grow tall and thin, filling a background without walling off the view. Slow and steady, feeding through its roots, and it copes with lower light better than most background plants.",
+ name:"Spelling: \"Retropiealis\" → \"retrospiralis\". The Spanish \"Por planta\" is now the unit in the title."},
+
+{id:"mngw0x5apn745",now:"Gigant Duck Weed",price:5,desc:null,photo:false,
+ title:"Giant Duckweed (Spirodela polyrhiza)",
+ body:"Bigger than common duckweed — leaves about the size of a pencil eraser, with reddish undersides — which makes it far easier to net out again. Shades the tank and strips nitrate quickly. Be sure before you add it: duckweed of any size is very hard to remove completely once it's in.",
+ name:"Spelling: \"Gigant\" → \"Giant\". I've kept the honest warning about removal in the description — it prevents the kind of complaint that turns into a bad review."},
+
+{id:"mngw059mwbw20",now:"Duck Weed",price:null,desc:null,photo:true,
+ title:"Duckweed (Lemna minor)",
+ body:"Tiny floating leaves that multiply fast and pull nitrate straight out of the water. Useful as a nutrient sponge and as free food for goldfish and cichlids. Worth knowing before you buy: once duckweed is established it is very difficult to fully remove."},
+
+{id:"mngvypbvtrlf6",now:"Lettuce Water",price:null,desc:null,photo:true,
+ title:"Water Lettuce (Pistia stratiotes)",
+ body:"A floating rosette of soft, ribbed leaves with a velvet texture, trailing long feathery roots that shrimp and fry shelter in. Grows fast in warm water and shades a tub or pond well.",
+ legal:"Restricted plant. Possession, transport or sale of water lettuce is prohibited or restricted in California, Alabama, Connecticut, Florida, North Carolina, South Carolina, Texas and Wisconsin — and in California it is additionally regulated at county level. <b>Do not list on any shipping surface. Verify local sale with Svei before offering it at all.</b>",
+ name:"Word order: \"Lettuce Water\" → \"Water Lettuce\"."},
+
+{id:"mngvxwohhd107",now:"Frogbit",price:5,desc:null,photo:true,
+ title:"Amazon Frogbit (Limnobium laevigatum)",
+ body:"Floating rosettes of round, glossy leaves that sit flat on the surface, with long trailing roots underneath that shrimp pick through. Grows fast and shades out algae. Keep the surface calm and the leaf tops dry.",
+ legal:"Restricted plant — and this one matters most, because it is restricted <b>in California itself</b>, as well as Washington, Oregon and Vermont. Most online sellers refuse to ship it to those states. <b>Please confirm with Svei before this appears on any public listing, local or otherwise.</b>"},
+
+{id:"mngvwwibk798y",now:"Cryptocoryne tiger",price:null,desc:null,photo:false,
+ title:"Cryptocoryne 'Tiger'",
+ body:"A crypt patterned with fine dark speckling across olive leaves — subtle from across the room, striking up close. Care is standard for the genus: root tabs, stable water, and patience through the first melt."},
+
+{id:"mngvw8xw2uydl",now:"Cryptocoryne wentii Brown",price:null,desc:null,photo:false,
+ title:"Cryptocoryne wendtii 'Brown'",
+ body:"The most forgiving crypt in the hobby. Bronze-brown wavy leaves that darken under stronger light and stay compact enough for a midground. Feed the roots, expect one melt after planting, and it will come back stronger.",
+ name:"Spelling: \"wentii\" → \"wendtii\" (named after Wendt). Same correction applies to the Green variety below."},
+
+{id:"mngvv1e31dt4h",now:"Anubias Nana",price:5,desc:null,photo:false,
+ title:"Anubias barteri var. nana",
+ body:"Small, tough and slow — the plant most people build their first hardscape around. It attaches to wood or rock and stays exactly where you put it for years. Low light, no CO2, no trimming. Keep the rhizome above the substrate."},
+
+{id:"mngvudqpdxinn",now:"Cryptocoryne wentii Green",price:null,desc:null,photo:false,
+ title:"Cryptocoryne wendtii 'Green'",
+ body:"The same easy wendtii care in plain green, which makes it a good filler between more colourful plants. Over a few months it thickens into a dense clump. Root tabs help; CO2 is optional.",
+ name:"Spelling: \"wentii\" → \"wendtii\"."},
+
+{id:"mngvsw6p9aoox",now:"Vallisneria Gigantea",price:null,desc:null,photo:true,
+ title:"Giant Vallisneria (Vallisneria gigantea)",
+ body:"The largest Vallisneria — in a deep tank the leaves run several feet and lay across the surface. It spreads by runners into a dense curtain. Best in tanks twenty inches deep or more; in anything smaller it takes over."},
+
+{id:"mngvs0nihh0tk",now:"Bucephalandra King Skeleton Green",price:20,desc:null,photo:true,
+ title:"Bucephalandra 'King Skeleton' Green",
+ body:"Compact Bucephalandra with pronounced vein structure and a faint blue sheen across new leaves. It grows slowly enough that a scape built around it stays composed for months. Glue the rhizome to hardscape — never bury it."},
+
+{id:"mngvk0tzhsltk",now:"Bucephalandra Lady Pink",price:20,desc:null,photo:true,
+ title:"Bucephalandra 'Lady Pink'",
+ body:"Narrow leaves that emerge pink-bronze before settling into green, carrying the fine white speckling Bucephalandra is known for. Slow, tolerant of low light, and content attached to wood or stone."},
+
+{id:"mngvg3kussv08",now:"Ludwigia Repes",price:2,desc:null,photo:true,
+ title:"Ludwigia repens — sold per stem",
+ body:"A stem plant that runs olive on top and deep red underneath, going red through and through under strong light. Grows fast enough to keep pruning worthwhile. Trim the tops and replant them to build a bushy red group.",
+ name:"Spelling: \"Repes\" → \"repens\"."},
+
+{id:"mngvez8zw4if5",now:"Ludwigia natas super red",price:2,desc:null,photo:true,
+ title:"Ludwigia 'Super Red' — sold per stem",
+ body:"Holds its red at moderate light instead of demanding high intensity, which makes it one of the easier red stem plants to keep honest. Compact and slow enough that it won't take over. Iron and regular dosing deepen the colour.",
+ name:"Spelling: \"natas\" → \"natans\". Sold in the trade as Ludwigia palustris 'Super Red' — worth confirming which you have."}
+];
+
+const STORE = 'bloom-copy-review-v1';
+let state = JSON.parse(localStorage.getItem(STORE) || '{}');
+let filter = 'all';
+
+const save = () => localStorage.setItem(STORE, JSON.stringify(state));
+const entry = id => state[id] || (state[id] = {decision:null, title:null, body:null, note:''});
+const escape = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const isFlagged = p => Boolean(p.legal || p.name);
+const matchesFilter = p => ({
+  all:    true,
+  legal:  Boolean(p.legal),
+  nameFix:Boolean(p.name),
+  nophoto:!p.photo,
+  todo:   !entry(p.id).decision
+}[filter]);
+
+const FILTERS = [
+  ['all','Everything'],
+  ['todo','Not decided yet'],
+  ['legal','⚠ Legal check'],
+  ['nameFix','Name fixes'],
+  ['nophoto','No photo']
+];
+
+function countFor(key){
+  const was = filter; filter = key;
+  const n = PLANTS.filter(matchesFilter).length;
+  filter = was; return n;
+}
+
+function renderFilters(){
+  document.getElementById('filters').innerHTML = FILTERS
+    .map(([k,label]) => `<button class="chip ${filter===k?'on':''}" data-f="${k}">${label} · ${countFor(k)}</button>`)
+    .join('');
+}
+
+function renderRows(){
+  const rows = PLANTS.filter(matchesFilter).map(p => {
+    const e = entry(p.id);
+    const title = e.title ?? p.title;
+    const body  = e.body  ?? p.body;
+    const cls = [e.decision === 'keep' ? 'keep' : '', e.decision === 'skip' ? 'skip' : '',
+                 isFlagged(p) ? 'flagged' : ''].filter(Boolean).join(' ');
+
+    const flags = [
+      p.legal ? `<span class="flag flag-legal"><b>Legal check needed.</b> ${p.legal}</span>` : '',
+      p.name  ? `<span class="flag flag-name"><b>Naming:</b> ${escape(p.name)}</span>` : ''
+    ].join('');
+
+    return `<tr class="${cls}" data-id="${p.id}">
+      <td>
+        <div class="now-name">${escape(p.now)}</div>
+        <div class="kv">Price now: <b>${p.price === null ? '<span class="empty">not set</span>' : '$'+p.price}</b></div>
+        <div class="kv">Photo: <b>${p.photo ? 'yes' : '<span class="empty">missing</span>'}</b></div>
+        <div class="kv">Description now: ${p.desc ? '<b>'+escape(p.desc)+'</b>' : '<span class="empty">empty</span>'}</div>
+      </td>
+      <td>
+        <input class="new-title" data-k="title" value="${escape(title)}">
+        <textarea class="new-desc" data-k="body">${escape(body)}</textarea>
+        <div class="meter">
+          <span data-meter>${body.length} characters</span>
+          <span>aim for 180–340</span>
+        </div>
+        ${flags}
+      </td>
+      <td>
+        <div class="dec">
+          <button data-d="keep" class="${e.decision==='keep'?'on-keep':''}">✓ Keep</button>
+          <button data-d="skip" class="${e.decision==='skip'?'on-skip':''}">Skip</button>
+          <input class="note" data-k="note" placeholder="Note for Svei…" value="${escape(e.note)}">
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('rows').innerHTML = rows ||
+    `<tr><td style="text-align:center;color:var(--faint);padding:40px">Nothing matches this filter.</td></tr>`;
+
+  const decided = PLANTS.filter(p => entry(p.id).decision).length;
+  const kept    = PLANTS.filter(p => entry(p.id).decision === 'keep').length;
+  document.getElementById('tally').innerHTML =
+    `<b>${decided}</b> of ${PLANTS.length} decided · <b>${kept}</b> to keep`;
+}
+
+function render(){ renderFilters(); renderRows(); }
+
+function paintMeter(box){
+  const meter = box.closest('td').querySelector('[data-meter]');
+  const n = box.value.length;
+  const cls = n >= 180 && n <= 340 ? 'ok' : n > 340 ? 'over' : '';
+  meter.className = cls;
+  meter.textContent = n + ' characters' + (n > 5000 ? ' — over Meta’s limit' : '');
+}
+
+document.addEventListener('input', ev => {
+  const box = ev.target;
+  const key = box.dataset.k;
+  if(!key) return;
+  const id = box.closest('tr').dataset.id;
+  entry(id)[key] = box.value;
+  if(key === 'body') paintMeter(box);
+  save();
+});
+
+document.addEventListener('click', ev => {
+  const chip = ev.target.closest('.chip');
+  if(chip){ filter = chip.dataset.f; render(); return; }
+
+  const dec = ev.target.closest('[data-d]');
+  if(dec){
+    const id = dec.closest('tr').dataset.id;
+    const e = entry(id);
+    e.decision = e.decision === dec.dataset.d ? null : dec.dataset.d;
+    save(); render();
+  }
+});
+
+document.getElementById('keepall').onclick = () => {
+  PLANTS.filter(matchesFilter).forEach(p => entry(p.id).decision = 'keep');
+  save(); render();
+};
+
+document.getElementById('reset').onclick = () => {
+  if(!confirm('Clear every decision and edit, and start over?')) return;
+  state = {}; save(); render();
+};
+
+function buildPayload(){
+  const decisions = PLANTS.map(p => {
+    const e = entry(p.id);
+    if(e.decision !== 'keep') return null;
+    return {
+      id: p.id,
+      current_name: p.now,
+      current_price: p.price,
+      current_description: p.desc,
+      approved_title: e.title ?? p.title,
+      approved_description: e.body ?? p.body,
+      note_from_owner: e.note || null,
+      needs_legal_check: Boolean(p.legal)
+    };
+  }).filter(Boolean);
+
+  return {
+    generated_at: new Date().toISOString(),
+    source: 'plant-copy-review sheet (public link)',
+    reviewed: PLANTS.filter(p => entry(p.id).decision).length,
+    total: PLANTS.length,
+    approved_count: decisions.length,
+    skipped: PLANTS.filter(p => entry(p.id).decision === 'skip').map(p => ({id:p.id, name:p.now})),
+    approved: decisions
+  };
+}
+
+document.getElementById('export').onclick = () => {
+  const blob = new Blob([JSON.stringify(buildPayload(), null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'plant-copy-decisions.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* No email is sent automatically — this device has no mail account wired
+   up here. This just opens whatever mail app the phone/PC already has
+   signed in, pre-filled, so the user only has to attach the file and hit
+   send themselves. */
+document.getElementById('mail').onclick = () => {
+  const decided = PLANTS.filter(p => entry(p.id).decision).length;
+  const kept = PLANTS.filter(p => entry(p.id).decision === 'keep').length;
+  const subject = encodeURIComponent('Plant Copy Decisions — Bloom Aquatics');
+  const body = encodeURIComponent(
+`Hi,
+
+I reviewed the plant listing copy: ${decided} of ${PLANTS.length} decided, ${kept} to keep.
+
+Attach the file "plant-copy-decisions.json" you just downloaded to this email before sending — the browser can't attach it automatically.
+
+If you haven't downloaded it yet, press "Export decisions" first, then come back to this email.`
+  );
+  window.location.href = `mailto:svei00@gmail.com?subject=${subject}&body=${body}`;
+};
+
+render();
+</script>
+</body>
+</html>

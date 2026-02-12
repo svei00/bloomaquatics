@@ -6,6 +6,10 @@ uploads/
 backups/
 .env
 
-# Copy-review working sheet: embeds purchase_price so the owner can make
-# pricing decisions. Costs never leave home, and this repo is public.
-docs/plant-copy-review/
+# Copy-review sheet: index.html + README embed purchase_price so the owner
+# can make pricing decisions. Costs never leave home, and this repo is public.
+# public.html and link-config.json have no cost data and are safe to track —
+# that's the file server.js serves at /plant-review.
+docs/plant-copy-review/index.html
+docs/plant-copy-review/README.md
+docs/plant-copy-review/.published-at
