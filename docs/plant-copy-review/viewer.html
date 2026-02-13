@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bloom Aquatics · Plant Copy Decisions Viewer</title>
+<style>
+  :root{
+    --purple:#7c3aed; --purple-soft:#f5f3ff; --purple-line:#ede9fe;
+    --ink:#111827; --muted:#6b7280; --faint:#9ca3af;
+    --line:#e5e7eb; --bg:#f9fafb; --card:#ffffff;
+    --green:#16a34a; --green-soft:#f0fdf4;
+    --amber:#d97706; --amber-soft:#fffbeb;
+    --red:#dc2626;   --red-soft:#fef2f2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.6}
+  .wrap{max-width:900px;margin:0 auto;padding:20px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 20px}
+
+  .drop{border:2px dashed var(--purple);border-radius:16px;padding:40px 20px;text-align:center;
+        background:var(--purple-soft);cursor:pointer}
+  .drop.over{background:#ede9fe}
+  .drop input{display:none}
+  .drop p{margin:0;color:var(--purple);font-weight:600;font-size:15px}
+  .drop span{color:var(--muted);font-size:13px}
+
+  .summary{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:14px 18px;flex:1;min-width:120px}
+  .stat b{display:block;font-size:24px;color:var(--purple)}
+  .stat span{font-size:12px;color:var(--muted)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:16px 18px;margin-bottom:12px}
+  .card h3{margin:0 0 6px;font-size:16px}
+  .old{font-size:12.5px;color:var(--faint);margin-bottom:8px}
+  .old s{color:var(--faint)}
+  .new-desc{font-size:14px;color:var(--ink);margin-bottom:6px}
+  .note{background:var(--amber-soft);border:1px solid #fde68a;border-radius:8px;
+        padding:8px 11px;font-size:13px;color:#92400e;margin-top:8px}
+  .note b{color:#78350f}
+  .legal{background:var(--red-soft);border:1px solid #fecaca;border-radius:8px;
+         padding:8px 11px;font-size:13px;color:#991b1b;margin-top:8px}
+
+  .section-title{font-size:13px;text-transform:uppercase;letter-spacing:.05em;
+                 color:var(--faint);font-weight:700;margin:26px 0 10px}
+  .skip-list{font-size:13.5px;color:var(--muted)}
+  .skip-list li{margin-bottom:4px}
+
+  .hidden{display:none}
+  .reset{margin-top:20px;background:none;border:none;color:var(--muted);
+         font-size:13px;cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🌿 Plant Copy Decisions — Viewer</h1>
+  <p class="sub">Opens the <code>plant-copy-decisions.json</code> file exported from the review sheet. Nothing here touches the database — this just makes the file readable.</p>
+
+  <div id="drop-zone" class="drop">
+    <input type="file" id="file-input" accept="application/json">
+    <p>📄 Click here, or drag the JSON file in</p>
+    <span>plant-copy-decisions.json</span>
+  </div>
+
+  <div id="report" class="hidden"></div>
+</div>
+
+<script>
+const zone  = document.getElementById('drop-zone');
+const input = document.getElementById('file-input');
+const report = document.getElementById('report');
+
+zone.onclick = () => input.click();
+input.onchange = () => input.files[0] && readFile(input.files[0]);
+
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file) readFile(file);
+});
+
+function readFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      render(JSON.parse(reader.result));
+    } catch (err) {
+      alert('Could not read that file — is it the plant-copy-decisions.json export?');
+    }
+  };
+  reader.readAsText(file);
+}
+
+const escape = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function render(data){
+  zone.classList.add('hidden');
+  report.classList.remove('hidden');
+
+  const approved = data.approved || [];
+  const skipped  = data.skipped  || [];
+  const legalCount = approved.filter(p => p.needs_legal_check).length;
+  const noteCount  = approved.filter(p => p.note_from_owner).length;
+
+  let html = `
+    <div class="summary">
+      <div class="stat"><b>${data.reviewed ?? '?'}</b><span>of ${data.total ?? '?'} decided</span></div>
+      <div class="stat"><b>${approved.length}</b><span>approved to apply</span></div>
+      <div class="stat"><b>${skipped.length}</b><span>skipped</span></div>
+      <div class="stat"><b>${noteCount}</b><span>with a note for you</span></div>
+    </div>
+    <div style="font-size:12.5px;color:var(--faint);margin-bottom:16px">
+      Exported ${data.generated_at ? new Date(data.generated_at).toLocaleString() : 'unknown time'}
+      ${legalCount ? ` · <b style="color:var(--red)">${legalCount} still need a legal check before publishing</b>` : ''}
+    </div>
+
+    <div class="section-title">Approved (${approved.length})</div>
+  `;
+
+  html += approved.map(p => `
+    <div class="card">
+      <h3>${escape(p.approved_title)}</h3>
+      <div class="old">was: <s>${escape(p.current_name)}</s>${p.current_price != null ? ` · sells for $${p.current_price}` : ''}</div>
+      <div class="new-desc">${escape(p.approved_description)}</div>
+      ${p.needs_legal_check ? `<div class="legal"><b>⚠ Legal check needed</b> before this goes public.</div>` : ''}
+      ${p.note_from_owner ? `<div class="note"><b>Note from her:</b> ${escape(p.note_from_owner)}</div>` : ''}
+    </div>
+  `).join('') || `<p style="color:var(--faint)">Nothing approved yet.</p>`;
+
+  if (skipped.length){
+    html += `
+      <div class="section-title">Skipped (${skipped.length})</div>
+      <ul class="skip-list">${skipped.map(p => `<li>${escape(p.name)}</li>`).join('')}</ul>
+    `;
+  }
+
+  html += `<button class="reset" onclick="location.reload()">← Load a different file</button>`;
+  report.innerHTML = html;
+}
+</script>
+</body>
+</html>

@@ -45,7 +45,6 @@
   .btn{padding:10px 16px;border-radius:10px;border:none;font-size:14px;font-weight:600;
        cursor:pointer;font-family:inherit}
   .btn-main{background:var(--purple);color:#fff}
-  .btn-mail{background:var(--green);color:#fff}
   .btn-ghost{background:var(--card);color:var(--muted);border:1.5px solid var(--line)}
   .tally{font-size:13px;color:var(--muted);margin-left:auto}
   .tally b{color:var(--ink)}
@@ -133,7 +132,7 @@
       <li><b>Read</b> the suggested title and description. Edit any text directly in the box — it's yours to change.</li>
       <li>Press <b>Keep</b> if you want it, or <b>Skip</b> if you'd rather leave that plant as it is.</li>
       <li>Your work saves automatically in this browser. You can close the page and come back later, as long as the link hasn't expired.</li>
-      <li>When you're done, press <b>Export decisions</b> to download the file, then <b>Email me the results</b> to send it along.</li>
+      <li>When you're done, press <b>Export decisions</b>. It downloads a file called <code>plant-copy-decisions.json</code> — send that file to Svei however you two normally send files (WhatsApp, email, whatever's easiest). Any notes you typed are saved inside it.</li>
     </ol>
   </div>
 </header>
@@ -142,7 +141,6 @@
   <div class="chips" id="filters"></div>
   <div class="actions">
     <button class="btn btn-main" id="export">⬇ Export decisions</button>
-    <button class="btn btn-mail" id="mail">📧 Email me the results</button>
     <button class="btn btn-ghost" id="keepall">Keep all shown</button>
     <button class="btn btn-ghost" id="reset">Reset</button>
     <span class="tally" id="tally"></span>
@@ -537,26 +535,6 @@ document.getElementById('export').onclick = () => {
   a.download = 'plant-copy-decisions.json';
   a.click();
   URL.revokeObjectURL(a.href);
-};
-
-/* No email is sent automatically — this device has no mail account wired
-   up here. This just opens whatever mail app the phone/PC already has
-   signed in, pre-filled, so the user only has to attach the file and hit
-   send themselves. */
-document.getElementById('mail').onclick = () => {
-  const decided = PLANTS.filter(p => entry(p.id).decision).length;
-  const kept = PLANTS.filter(p => entry(p.id).decision === 'keep').length;
-  const subject = encodeURIComponent('Plant Copy Decisions — Bloom Aquatics');
-  const body = encodeURIComponent(
-`Hi,
-
-I reviewed the plant listing copy: ${decided} of ${PLANTS.length} decided, ${kept} to keep.
-
-Attach the file "plant-copy-decisions.json" you just downloaded to this email before sending — the browser can't attach it automatically.
-
-If you haven't downloaded it yet, press "Export decisions" first, then come back to this email.`
-  );
-  window.location.href = `mailto:svei00@gmail.com?subject=${subject}&body=${body}`;
 };
 
 render();
