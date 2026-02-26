@@ -106,6 +106,16 @@ try {
   console.log('[DB] Migration OK: cost_centers.photo_path added.');
 } catch { /* already exists */ }
 
+// ── Safe migration: add category column to transactions ───
+// Lets an expense be tagged as 'inventario' (linked to Artículo/Planta/
+// Animal/Insumo) vs 'equipo' (racks, totes, grow lights — business gear,
+// not for resale) vs 'operacion' (renta, servicios, marketing, etc.).
+// Nullable, existing rows untouched, freely reclassifiable via PATCH.
+try {
+  db.exec('ALTER TABLE transactions ADD COLUMN category TEXT');
+  console.log('[DB] Migration OK: transactions.category added.');
+} catch { /* already exists */ }
+
 // ── Safe migration: allow 'animal' in inventory.type ──────
 // SQLite can't ALTER a CHECK constraint in place, so for existing DBs we
 // rebuild the table once. FKs are turned off during the swap so the
@@ -241,15 +251,22 @@ app.get('/api/transactions', (_req, res) => {
   res.json(rows.map(r => ({
     id: r.id, date: r.date, type: r.type, desc: r.desc,
     amount: r.amount, ccId: r.cc_id, payment: r.payment,
-    notes: r.notes, linkedItemId: r.linked_item_id,
+    notes: r.notes, linkedItemId: r.linked_item_id, category: r.category || null,
   })));
 });
 
 app.post('/api/transactions', (req, res) => {
-  const { id, date, type, desc, amount, ccId, payment, notes, linkedItemId } = req.body;
-  db.prepare(`INSERT INTO transactions (id,date,type,desc,amount,cc_id,payment,notes,linked_item_id)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(id, date, type, desc, amount, ccId, payment, notes||null, linkedItemId||null);
+  const { id, date, type, desc, amount, ccId, payment, notes, linkedItemId, category } = req.body;
+  db.prepare(`INSERT INTO transactions (id,date,type,desc,amount,cc_id,payment,notes,linked_item_id,category)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, date, type, desc, amount, ccId, payment, notes||null, linkedItemId||null, category||null);
+  res.json({ ok: true });
+});
+
+app.patch('/api/transactions/:id', (req, res) => {
+  const { date, type, desc, amount, ccId, payment, notes, linkedItemId, category } = req.body;
+  db.prepare(`UPDATE transactions SET date=?,type=?,desc=?,amount=?,cc_id=?,payment=?,notes=?,linked_item_id=?,category=? WHERE id=?`)
+    .run(date, type, desc, amount, ccId, payment, notes||null, linkedItemId||null, category||null, req.params.id);
   res.json({ ok: true });
 });
 
