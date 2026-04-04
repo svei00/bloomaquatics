@@ -68,15 +68,16 @@ function Modal({ title, onClose, children }) {
   return (
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{
       position:'absolute', inset:0, zIndex:400,
-      background:'rgba(0,0,0,0.82)',
-      display:'flex', alignItems:'flex-end',
+      background:'rgba(0,0,0,0.75)',
+      display:'flex', alignItems:'center', justifyContent:'center',
+      padding:'0 16px',
     }}>
       <div style={{
-        background:'#ffffff',          /* solid white — no CSS vars, no alpha leaks */
-        width:'100%', borderRadius:'22px 22px 0 0',
-        padding:'22px 20px 44px',
-        maxHeight:'90vh', overflowY:'auto', boxSizing:'border-box',
-        boxShadow:'0 -8px 40px rgba(0,0,0,0.3)',
+        background:'#ffffff',
+        width:'100%', maxWidth:440, borderRadius:20,
+        padding:'22px 20px 32px',
+        maxHeight:'88dvh', overflowY:'auto', boxSizing:'border-box',
+        boxShadow:'0 8px 48px rgba(0,0,0,0.45)',
       }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
           <span style={{ fontWeight:700, fontSize:19, color:'#111827' }}>{title}</span>
@@ -793,7 +794,7 @@ export default function App() {
   ];
 
   if(error) return (
-    <div style={{height:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:24,textAlign:'center'}}>
+    <div style={{height:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:24,textAlign:'center'}}>
       <span style={{fontSize:48}}>⚠️</span>
       <div style={{fontWeight:700,fontSize:18,color:'#dc2626'}}>Error de conexión</div>
       <div style={{fontSize:14,color:'#6b7280'}}>{error}</div>
@@ -802,7 +803,7 @@ export default function App() {
   );
 
   if(!ready) return (
-    <div style={{height:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16}}>
+    <div style={{height:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16}}>
       <span style={{fontSize:52}}>🌿</span>
       <span style={{fontSize:20,fontWeight:700,color:'#111827'}}>Bloom Aquatics</span>
       <span style={{fontSize:14,color:'#9ca3af'}}>Conectando con el servidor…</span>
@@ -811,7 +812,8 @@ export default function App() {
 
   return (
     /* position:relative + overflow:hidden = modals work as absolute children */
-    <div style={{height:'100vh',display:'flex',flexDirection:'column',maxWidth:480,margin:'0 auto',position:'relative',overflow:'hidden',background:'#f9fafb'}}>
+    /* 100dvh = dynamic viewport height — accounts for mobile browser chrome  */
+    <div style={{height:'100dvh',display:'flex',flexDirection:'column',maxWidth:480,margin:'0 auto',position:'relative',overflow:'hidden',background:'#f9fafb'}}>
       <div style={{background:'#7c3aed',color:'white',padding:'14px 18px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
         <div>
           <div style={{fontWeight:800,fontSize:20,letterSpacing:'-0.01em'}}>🌿 Bloom Aquatics</div>
@@ -828,7 +830,8 @@ export default function App() {
         {tab==='settings'     && <Settings     costCenters={costCenters} setCostCenters={setCostCenters}/>}
       </div>
 
-      <div style={{display:'flex',borderTop:'1px solid #e5e7eb',background:'#ffffff',flexShrink:0}}>
+      <div style={{display:'flex',borderTop:'1px solid #e5e7eb',background:'#ffffff',flexShrink:0,
+        paddingBottom:'env(safe-area-inset-bottom, 0px)'}}>
         {NAV.map(n=>(
           <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:'10px 2px 14px',background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,minHeight:62}}>
             <span style={{fontSize:22}}>{n.icon}</span>
