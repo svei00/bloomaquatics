@@ -207,6 +207,13 @@ app.post('/api/inventory', (req, res) => {
   res.json({ ok: true });
 });
 
+app.patch('/api/inventory/:id', (req, res) => {
+  const { type, name, purchaseDate, purchasePrice, ccId, qty, unit, notes } = req.body;
+  db.prepare(`UPDATE inventory SET type=?,name=?,purchase_date=?,purchase_price=?,cc_id=?,qty=?,unit=?,notes=? WHERE id=?`)
+    .run(type, name, purchaseDate, purchasePrice, ccId, qty||1, unit||'unidad', notes||null, req.params.id);
+  res.json({ ok: true });
+});
+
 app.delete('/api/inventory/:id', (req, res) => {
   const item = db.prepare('SELECT photo_path FROM inventory WHERE id=?').get(req.params.id);
   if (item?.photo_path) {

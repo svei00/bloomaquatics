@@ -18,6 +18,7 @@ const photoUrl  = p        => p ? `/uploads/${p}?t=${Date.now()}` : null;
 const api = {
   get:    url     => fetch(url).then(r=>r.json()),
   post:   (url,b) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json()),
+  patch:  (url,b) => fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json()),
   delete: url     => fetch(url,{method:'DELETE'}).then(r=>r.json()),
   upload: (url,file) => {
     const fd = new FormData();
