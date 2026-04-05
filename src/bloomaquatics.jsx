@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
-const MONTHS   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const MONTHS_S = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MONTHS    = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MONTHS_S  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const PAYMENTS  = ['Efectivo','Zelle','Venmo','PayPal','Otro'];
 const PLATFORMS = ['OfferUp','Facebook Marketplace','eBay','En persona','Otro'];
 const SUPPLY_UNITS = ['unidad','botella','bolsa','galón','litro','kg','g','ml'];
@@ -13,28 +13,27 @@ const today     = () => new Date().toISOString().slice(0,10);
 const inMY      = (d,m,y) => { try{ const dt=new Date(d+'T12:00:00'); return dt.getMonth()===m&&dt.getFullYear()===y; }catch{return false;} };
 const inY       = (d,y)   => { try{ return new Date(d+'T12:00:00').getFullYear()===y; }catch{return false;} };
 const daysSince = d        => { try{ return Math.floor((Date.now()-new Date(d+'T12:00:00'))/86400000); }catch{return 0;} };
+const photoUrl  = p        => p ? `/uploads/${p}?t=${Date.now()}` : null;
 
-/* ── API ─────────────────────────────────────────────────── */
 const api = {
   get:    url     => fetch(url).then(r=>r.json()),
   post:   (url,b) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json()),
   delete: url     => fetch(url,{method:'DELETE'}).then(r=>r.json()),
+  upload: (url,file) => {
+    const fd = new FormData();
+    fd.append('photo', file);
+    return fetch(url,{method:'POST',body:fd}).then(r=>r.json());
+  },
 };
 
-/* ── STYLES ──────────────────────────────────────────────── */
 const S = {
-  input: {
-    width:'100%', boxSizing:'border-box', padding:'13px 14px',
-    borderRadius:10, border:'1.5px solid #d1d5db',
-    fontSize:16, background:'#ffffff', color:'#111827',
-    marginBottom:12, minHeight:50, WebkitAppearance:'none', appearance:'none', outline:'none',
-  },
+  input: { width:'100%', boxSizing:'border-box', padding:'13px 14px', borderRadius:10,
+    border:'1.5px solid #d1d5db', fontSize:16, background:'#ffffff', color:'#111827',
+    marginBottom:12, minHeight:50, WebkitAppearance:'none', appearance:'none', outline:'none' },
   label: { fontSize:13, color:'#6b7280', marginBottom:5, display:'block', fontWeight:500 },
-  btn: (bg='#7c3aed', fg='white') => ({
-    width:'100%', padding:'16px', background:bg, color:fg, border:'none',
-    borderRadius:12, fontSize:16, fontWeight:700, cursor:'pointer', minHeight:54, marginTop:8,
-  }),
-  card: { background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:14, padding:'14px 16px', marginBottom:12 },
+  btn:   (bg='#7c3aed',fg='white') => ({ width:'100%', padding:'16px', background:bg, color:fg,
+    border:'none', borderRadius:12, fontSize:16, fontWeight:700, cursor:'pointer', minHeight:54, marginTop:8 }),
+  card:  { background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:14, padding:'14px 16px', marginBottom:12 },
   muted: { fontSize:12, color:'#6b7280', lineHeight:1.7 },
 };
 
@@ -46,12 +45,10 @@ function Avatar({ name, color, size=38 }) {
 }
 
 function Chip({ label, active, onClick, color='#7c3aed' }) {
-  return <button onClick={onClick} style={{
-    padding:'9px 16px', borderRadius:20, flexShrink:0, whiteSpace:'nowrap', minHeight:42,
+  return <button onClick={onClick} style={{ padding:'9px 16px', borderRadius:20, flexShrink:0,
+    whiteSpace:'nowrap', minHeight:42, cursor:'pointer', fontSize:14, fontWeight:active?700:400,
     border:`1.5px solid ${active?color:'#d1d5db'}`,
-    background: active?color+'18':'transparent',
-    color: active?color:'#6b7280',
-    fontSize:14, fontWeight:active?700:400, cursor:'pointer' }}>{label}</button>;
+    background: active?color+'18':'transparent', color: active?color:'#6b7280' }}>{label}</button>;
 }
 
 function StatBox({ label, value, color }) {
@@ -62,29 +59,88 @@ function StatBox({ label, value, color }) {
   </div>;
 }
 
+/* ── PHOTO THUMB ─────────────────────────────────────────── */
+function PhotoThumb({ photoPath, type, size=56, radius=10 }) {
+  const url = photoUrl(photoPath);
+  return (
+    <div style={{ width:size, height:size, borderRadius:radius, overflow:'hidden', flexShrink:0,
+      background:'#f3f4f6', border:'1px solid #e5e7eb', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      {url
+        ? <img src={url} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt=""/>
+        : <span style={{ fontSize:size*.45 }}>{type==='plant'?'🌿':type==='supply'?'🧪':'📦'}</span>}
+    </div>
+  );
+}
+
+/* ── PHOTO UPLOAD WIDGET ─────────────────────────────────── */
+function PhotoUpload({ itemId, currentPath, onUploaded }) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef(null);
+  const url = photoUrl(currentPath);
+
+  const handleFile = async e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await api.upload(`/api/inventory/${itemId}/photo`, file);
+      if (res.ok) onUploaded(res.photoPath);
+    } finally { setUploading(false); }
+  };
+
+  const handleDelete = async () => {
+    await api.delete(`/api/inventory/${itemId}/photo`);
+    onUploaded(null);
+  };
+
+  return (
+    <div style={{ marginBottom:12 }}>
+      <label style={S.label}>Foto (miniatura)</label>
+      <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+        <div style={{ width:80, height:80, borderRadius:12, overflow:'hidden', background:'#f3f4f6',
+          border:'1.5px solid #e5e7eb', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          {url
+            ? <img src={url} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt=""/>
+            : <span style={{ fontSize:32 }}>📷</span>}
+        </div>
+        <div style={{ flex:1, display:'flex', flexDirection:'column', gap:8 }}>
+          <input ref={inputRef} type="file" accept="image/*" capture="environment"
+            onChange={handleFile} style={{ display:'none' }}/>
+          <button onClick={()=>inputRef.current?.click()} style={{
+            padding:'11px', borderRadius:10, border:'1.5px dashed #7c3aed',
+            background:'#f5f3ff', color:'#7c3aed', fontSize:14, fontWeight:600, cursor:'pointer'
+          }}>{uploading ? 'Subiendo…' : url ? '📷 Cambiar foto' : '📷 Agregar foto'}</button>
+          {url && (
+            <button onClick={handleDelete} style={{
+              padding:'8px', borderRadius:8, border:'1px solid #fecaca',
+              background:'#fef2f2', color:'#dc2626', fontSize:12, fontWeight:600, cursor:'pointer'
+            }}>🗑️ Eliminar foto</button>
+          )}
+        </div>
+      </div>
+      <div style={{ fontSize:11, color:'#9ca3af', marginTop:5 }}>
+        Toca "Agregar foto" para usar la cámara o elegir de la galería. Máx 8 MB.
+      </div>
+    </div>
+  );
+}
+
 /* ── MODAL ───────────────────────────────────────────────── */
-/* parent must have: position:relative; overflow:hidden      */
 function Modal({ title, onClose, children }) {
   return (
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{
       position:'absolute', inset:0, zIndex:400,
       background:'rgba(0,0,0,0.75)',
-      display:'flex', alignItems:'center', justifyContent:'center',
-      padding:'0 16px',
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'0 16px',
     }}>
-      <div style={{
-        background:'#ffffff',
-        width:'100%', maxWidth:440, borderRadius:20,
-        padding:'22px 20px 32px',
-        maxHeight:'88dvh', overflowY:'auto', boxSizing:'border-box',
-        boxShadow:'0 8px 48px rgba(0,0,0,0.45)',
-      }}>
+      <div style={{ background:'#ffffff', width:'100%', maxWidth:440, borderRadius:20,
+        padding:'22px 20px 32px', maxHeight:'88dvh', overflowY:'auto', boxSizing:'border-box',
+        boxShadow:'0 8px 48px rgba(0,0,0,0.45)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
           <span style={{ fontWeight:700, fontSize:19, color:'#111827' }}>{title}</span>
-          <button onClick={onClose} style={{
-            background:'#f3f4f6', border:'none', borderRadius:'50%',
+          <button onClick={onClose} style={{ background:'#f3f4f6', border:'none', borderRadius:'50%',
             width:40, height:40, fontSize:22, cursor:'pointer', color:'#374151',
-            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
+            display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
         </div>
         {children}
       </div>
@@ -96,9 +152,7 @@ function Modal({ title, onClose, children }) {
 function AutoDesc({ value, onChange, inventory, placeholder }) {
   const [open, setOpen] = useState(false);
   const lower    = (value||'').toLowerCase().trim();
-  const matches  = lower.length>=2
-    ? inventory.filter(i=>i.name.toLowerCase().includes(lower)).slice(0,6)
-    : [];
+  const matches  = lower.length>=2 ? inventory.filter(i=>i.name.toLowerCase().includes(lower)).slice(0,6) : [];
   const inCatalog = lower.length>2 && inventory.some(i=>i.name.toLowerCase()===lower);
   const showWarn  = lower.length>2 && !inCatalog && !open;
 
@@ -107,18 +161,16 @@ function AutoDesc({ value, onChange, inventory, placeholder }) {
       <input value={value} onChange={e=>{onChange(e.target.value);setOpen(true);}}
         onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),180)}
         placeholder={placeholder} style={{...S.input, marginBottom:0}}/>
-
       {open && matches.length>0 && (
-        <div style={{ background:'#ffffff', border:'1.5px solid #7c3aed40',
-          borderRadius:10, overflow:'hidden', marginTop:4,
-          boxShadow:'0 4px 20px rgba(0,0,0,0.18)', zIndex:10, position:'relative' }}>
+        <div style={{ background:'#fff', border:'1.5px solid #7c3aed40', borderRadius:10,
+          overflow:'hidden', marginTop:4, boxShadow:'0 4px 20px rgba(0,0,0,0.18)', zIndex:10, position:'relative' }}>
           <div style={{ padding:'6px 12px', fontSize:11, color:'#7c3aed', fontWeight:700,
             background:'#f5f3ff', borderBottom:'1px solid #ede9fe' }}>🔍 En tu catálogo:</div>
           {matches.map(item=>(
             <div key={item.id} onMouseDown={()=>{onChange(item.name);setOpen(false);}}
               style={{ padding:'11px 14px', cursor:'pointer', fontSize:14, color:'#111827',
                 display:'flex', gap:10, alignItems:'center', borderBottom:'0.5px solid #f9fafb' }}>
-              <span>{item.type==='plant'?'🌿':item.type==='supply'?'🧪':'📦'}</span>
+              <PhotoThumb photoPath={item.photoPath} type={item.type} size={32} radius={6}/>
               <span style={{flex:1}}>{item.name}</span>
               <span style={{fontSize:11,color:'#7c3aed',fontWeight:700}}>
                 {item.type==='plant'?'Planta':item.type==='supply'?'Insumo':'Artículo'}
@@ -127,13 +179,11 @@ function AutoDesc({ value, onChange, inventory, placeholder }) {
           ))}
         </div>
       )}
-
       {showWarn && (
         <div style={{ marginTop:5, padding:'9px 12px', background:'#fffbeb',
-          border:'1px solid #f59e0b', borderRadius:8, fontSize:12, color:'#92400e',
-          display:'flex', gap:6 }}>
+          border:'1px solid #f59e0b', borderRadius:8, fontSize:12, color:'#92400e', display:'flex', gap:6 }}>
           <span>⚠️</span>
-          <span><strong>"{value}"</strong> no está en el catálogo. Agrégalo en <strong>Inventario</strong> para reportes y gráficas por artículo.</span>
+          <span><strong>"{value}"</strong> no está en el catálogo. Agrégalo en <strong>Inventario</strong> para reportes por artículo.</span>
         </div>
       )}
     </div>
@@ -157,36 +207,28 @@ function TxnModal({ costCenters, inventory, onSave, onClose }) {
           <button key={t} onClick={()=>{setType(t);setDesc('');}} style={{
             flex:1, padding:'13px', borderRadius:12, cursor:'pointer', minHeight:52,
             border:`2px solid ${type===t?c:'#e5e7eb'}`,
-            background: type===t?c+'18':'transparent',
-            color: type===t?c:'#6b7280', fontSize:15, fontWeight:700 }}>{l}</button>
+            background: type===t?c+'18':'transparent', color: type===t?c:'#6b7280', fontSize:15, fontWeight:700 }}>{l}</button>
         ))}
       </div>
-
       <label style={S.label}>Fecha</label>
       <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={S.input}/>
-
       <label style={S.label}>Descripción *</label>
       <AutoDesc value={desc} onChange={setDesc} inventory={inventory}
-        placeholder={type==='income'?'Ej: Stroller, Java fern, plantas OfferUp…':'Ej: Seachem Flourish, sustrato, gas…'}/>
-
+        placeholder={type==='income'?'Ej: Stroller, Java fern, OfferUp…':'Ej: Seachem Flourish, gas…'}/>
       <label style={S.label}>Monto ($) *</label>
       <input type="number" step="0.01" min="0" placeholder="0.00"
         value={amount} onChange={e=>setAmount(e.target.value)} style={S.input}/>
-
       <label style={S.label}>Centro de Costo</label>
       <select value={ccId} onChange={e=>setCcId(e.target.value)} style={S.input}>
         {costCenters.map(cc=><option key={cc.id} value={cc.id}>{cc.name}</option>)}
       </select>
-
       <label style={S.label}>Método de Pago</label>
       <select value={payment} onChange={e=>setPay(e.target.value)} style={S.input}>
         {PAYMENTS.map(p=><option key={p}>{p}</option>)}
       </select>
-
-      <label style={S.label}>Notas (opcional)</label>
+      <label style={S.label}>Notas</label>
       <textarea value={notes} onChange={e=>setNotes(e.target.value)}
-        style={{...S.input,height:64,resize:'vertical'}} placeholder="Plataforma, cliente, detalles…"/>
-
+        style={{...S.input,height:64,resize:'vertical'}} placeholder="Plataforma, cliente…"/>
       <button style={S.btn(type==='income'?'#16a34a':'#dc2626')} onClick={()=>{
         if(!desc||!amount) return;
         onSave({id:uid(),date,type,desc,amount:parseFloat(amount),ccId,payment,notes});
@@ -206,6 +248,37 @@ function InvModal({ costCenters, onSave, onClose }) {
   const [qty,setQty]       = useState('1');
   const [unit,setUnit]     = useState('unidad');
   const [notes,setNotes]   = useState('');
+  // Photo is uploaded AFTER item is saved (we need the id first)
+  const [savedId,setSavedId]     = useState(null);
+  const [photoPath,setPhotoPath] = useState(null);
+  const [step,setStep]           = useState('form'); // 'form' | 'photo'
+
+  const handleSave = () => {
+    if(!name.trim()) return;
+    const id = uid();
+    onSave({ id, type, name:name.trim(), purchaseDate:pDate,
+      purchasePrice:parseFloat(pPrice||0), ccId, qty:parseFloat(qty||1), unit, notes, sales:[] });
+    // Move to optional photo step
+    setSavedId(id);
+    setStep('photo');
+  };
+
+  if (step==='photo') return (
+    <Modal title="Foto del artículo (opcional)" onClose={onClose}>
+      <div style={{ textAlign:'center', marginBottom:18 }}>
+        <div style={{ fontSize:48, marginBottom:8 }}>{type==='plant'?'🌿':type==='supply'?'🧪':'📦'}</div>
+        <div style={{ fontWeight:700, fontSize:17, color:'#111827' }}>{name}</div>
+        <div style={{ fontSize:13, color:'#6b7280', marginTop:4 }}>
+          Artículo guardado. Ahora puedes agregar una foto o terminar.
+        </div>
+      </div>
+      <PhotoUpload itemId={savedId} currentPath={photoPath}
+        onUploaded={p => { setPhotoPath(p); onClose(); }}/>
+      <button style={{...S.btn('#6b7280'), marginTop:16}} onClick={onClose}>
+        Terminar sin foto
+      </button>
+    </Modal>
+  );
 
   return (
     <Modal title="Agregar al Inventario" onClose={onClose}>
@@ -214,25 +287,21 @@ function InvModal({ costCenters, onSave, onClose }) {
           ['plant',  '🌿','Planta',  'Multi-cosecha'],
           ['supply', '🧪','Insumo',  'Vitaminas, CO2…']].map(([t,ic,lb,sub])=>(
           <button key={t} onClick={()=>setType(t)} style={{
-            padding:'11px 4px', borderRadius:12, textAlign:'center', cursor:'pointer',
+            padding:'11px 4px', borderRadius:12, textAlign:'center', cursor:'pointer', lineHeight:1.4,
             border:`2px solid ${type===t?'#7c3aed':'#e5e7eb'}`,
-            background: type===t?'#f5f3ff':'#fafafa',
-            color: type===t?'#7c3aed':'#6b7280', lineHeight:1.4 }}>
+            background: type===t?'#f5f3ff':'#fafafa', color: type===t?'#7c3aed':'#6b7280' }}>
             <div style={{fontSize:22,marginBottom:4}}>{ic}</div>
             <div style={{fontSize:12,fontWeight:700,color:type===t?'#7c3aed':'#374151'}}>{lb}</div>
             <div style={{fontSize:10,marginTop:2,color:'#9ca3af'}}>{sub}</div>
           </button>
         ))}
       </div>
-
       <label style={S.label}>Nombre *</label>
       <input value={name} onChange={e=>setName(e.target.value)}
         placeholder={type==='plant'?'Ej: Anubias roja…':type==='supply'?'Ej: Seachem Flourish…':'Ej: Stroller Britax…'}
         style={S.input}/>
-
       <label style={S.label}>Fecha de Compra</label>
       <input type="date" value={pDate} onChange={e=>setPDate(e.target.value)} style={S.input}/>
-
       <div style={{display:'grid',gridTemplateColumns:type==='supply'?'1fr 70px 100px':'1fr',gap:10}}>
         <div>
           <label style={S.label}>Precio ($)</label>
@@ -240,35 +309,23 @@ function InvModal({ costCenters, onSave, onClose }) {
             value={pPrice} onChange={e=>setPPrice(e.target.value)} style={{...S.input,marginBottom:0}}/>
         </div>
         {type==='supply' && (<>
-          <div>
-            <label style={S.label}>Cant.</label>
-            <input type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} style={{...S.input,marginBottom:0}}/>
-          </div>
-          <div>
-            <label style={S.label}>Unidad</label>
+          <div><label style={S.label}>Cant.</label>
+            <input type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} style={{...S.input,marginBottom:0}}/></div>
+          <div><label style={S.label}>Unidad</label>
             <select value={unit} onChange={e=>setUnit(e.target.value)} style={{...S.input,marginBottom:0}}>
               {SUPPLY_UNITS.map(u=><option key={u}>{u}</option>)}
-            </select>
-          </div>
+            </select></div>
         </>)}
       </div>
       <div style={{height:12}}/>
-
       <label style={S.label}>Centro de Costo</label>
       <select value={ccId} onChange={e=>setCcId(e.target.value)} style={S.input}>
         {costCenters.map(cc=><option key={cc.id} value={cc.id}>{cc.name}</option>)}
       </select>
-
       <label style={S.label}>Notas</label>
       <textarea value={notes} onChange={e=>setNotes(e.target.value)}
         style={{...S.input,height:56,resize:'vertical'}} placeholder="Opcional…"/>
-
-      <button style={S.btn()} onClick={()=>{
-        if(!name.trim()) return;
-        onSave({id:uid(),type,name:name.trim(),purchaseDate:pDate,purchasePrice:parseFloat(pPrice||0),
-          ccId,qty:parseFloat(qty||1),unit,notes,sales:[]});
-        onClose();
-      }}>Guardar</button>
+      <button style={S.btn()} onClick={handleSave}>Guardar y agregar foto →</button>
     </Modal>
   );
 }
@@ -285,14 +342,16 @@ function SaleModal({ item, onSave, onClose }) {
 
   return (
     <Modal title={isPlant?'🌿 Registrar Cosecha':'💰 Marcar Vendido'} onClose={onClose}>
-      <div style={{background:'#f5f3ff',borderRadius:12,padding:'12px 16px',marginBottom:18,border:'1px solid #ddd6fe'}}>
-        <div style={{fontWeight:700,fontSize:15,color:'#4c1d95'}}>{item.name}</div>
-        <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>
-          Comprado {item.purchaseDate} · Costo: {fmt(item.purchasePrice)}
-          {isPlant&&item.sales?.length>0&&<span style={{color:'#16a34a'}}> · {item.sales.length} cosecha(s) · {fmt(prevRev)} recibido</span>}
+      <div style={{background:'#f5f3ff',borderRadius:12,padding:'12px 16px',marginBottom:18,border:'1px solid #ddd6fe',display:'flex',gap:12,alignItems:'center'}}>
+        <PhotoThumb photoPath={item.photoPath} type={item.type} size={52}/>
+        <div>
+          <div style={{fontWeight:700,fontSize:15,color:'#4c1d95'}}>{item.name}</div>
+          <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>
+            Comprado {item.purchaseDate} · {fmt(item.purchasePrice)}
+            {isPlant&&item.sales?.length>0&&<span style={{color:'#16a34a'}}> · {item.sales.length} cosecha(s) · {fmt(prevRev)} recibido</span>}
+          </div>
         </div>
       </div>
-
       <label style={S.label}>Fecha de Venta</label>
       <input type="date" value={saleDate} onChange={e=>setSaleDate(e.target.value)} style={S.input}/>
       <label style={S.label}>Precio de Venta ($) *</label>
@@ -308,7 +367,6 @@ function SaleModal({ item, onSave, onClose }) {
       <label style={S.label}>Notas</label>
       <textarea value={notes} onChange={e=>setNotes(e.target.value)}
         style={{...S.input,height:56,resize:'vertical'}} placeholder="Opcional…"/>
-
       <button style={S.btn('#16a34a')} onClick={()=>{
         if(!salePrice) return;
         onSave({id:uid(),saleDate,salePrice:parseFloat(salePrice),platform,payment,notes});
@@ -318,7 +376,70 @@ function SaleModal({ item, onSave, onClose }) {
   );
 }
 
-/* ── SVG BAR CHART ───────────────────────────────────────── */
+/* ── ITEM DETAIL MODAL (Vitrina) ─────────────────────────── */
+function DetailModal({ item, costCenters, onClose }) {
+  const cc = costCenters.find(c=>c.id===item.ccId);
+  const totalRev = (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
+  const profit   = totalRev - item.purchasePrice;
+  const url      = photoUrl(item.photoPath);
+
+  return (
+    <Modal title="" onClose={onClose}>
+      {/* Photo */}
+      <div style={{ width:'100%', paddingTop:'65%', position:'relative', borderRadius:14,
+        overflow:'hidden', background:'#f3f4f6', marginBottom:16 }}>
+        {url
+          ? <img src={url} alt={item.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}/>
+          : <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:72 }}>
+              {item.type==='plant'?'🌿':item.type==='supply'?'🧪':'📦'}
+            </div>}
+      </div>
+
+      <div style={{ fontWeight:800, fontSize:20, color:'#111827', marginBottom:4 }}>{item.name}</div>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
+        <span style={{ fontSize:12, fontWeight:600, color:cc?.color, background:cc?.color+'18',
+          padding:'4px 10px', borderRadius:20 }}>{cc?.name}</span>
+        <span style={{ fontSize:12, color:'#6b7280' }}>
+          {item.type==='plant'?'🌿 Planta':item.type==='supply'?'🧪 Insumo':'📦 Artículo'}
+        </span>
+        <span style={{ fontSize:12, color:'#9ca3af', marginLeft:'auto' }}>
+          {daysSince(item.purchaseDate)}d en stock
+        </span>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:16 }}>
+        {[['Costo',fmt(item.purchasePrice),'#6b7280'],
+          ['Ingresos',fmt(totalRev),'#16a34a'],
+          ['Ganancia',fmt(profit),profit>=0?'#1d4ed8':'#dc2626']].map(([l,v,c])=>(
+          <div key={l} style={{ background:'#f9fafb', borderRadius:10, padding:'10px 6px', textAlign:'center' }}>
+            <div style={{ fontSize:10, color:'#9ca3af', fontWeight:700, textTransform:'uppercase' }}>{l}</div>
+            <div style={{ fontSize:14, fontWeight:700, color:c, marginTop:3 }}>{v}</div>
+          </div>
+        ))}
+      </div>
+
+      {item.notes && <div style={{ background:'#f9fafb', borderRadius:10, padding:'10px 14px',
+        fontSize:13, color:'#374151', marginBottom:16, fontStyle:'italic' }}>{item.notes}</div>}
+
+      {item.type==='plant' && item.sales?.length>0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#6b7280', marginBottom:8 }}>Historial de cosechas</div>
+          {item.sales.map((s,i)=>(
+            <div key={s.id} style={{ display:'flex', justifyContent:'space-between', fontSize:13, color:'#374151',
+              padding:'6px 0', borderBottom:'1px solid #f3f4f6' }}>
+              <span>#{i+1} · {s.saleDate} · {s.platform}</span>
+              <span style={{ color:'#16a34a', fontWeight:700 }}>{fmt(s.salePrice)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button style={S.btn('#6b7280')} onClick={onClose}>Cerrar</button>
+    </Modal>
+  );
+}
+
+/* ── BAR CHART ───────────────────────────────────────────── */
 function BarChart({ data }) {
   const maxVal = Math.max(...data.map(d=>Math.max(d.income,d.expense)),1);
   const H=80, GW=22, BW=8, GAP=2;
@@ -328,9 +449,7 @@ function BarChart({ data }) {
       <svg width={Math.max(totalW,300)} height={H+26} style={{display:'block',minWidth:'100%'}}>
         <line x1={0} y1={H} x2={totalW} y2={H} stroke="#e5e7eb" strokeWidth={1}/>
         {data.map((d,i)=>{
-          const x  = i*(GW+4);
-          const iH = (d.income /maxVal)*H;
-          const eH = (d.expense/maxVal)*H;
+          const x=i*(GW+4), iH=(d.income/maxVal)*H, eH=(d.expense/maxVal)*H;
           return (
             <g key={i}>
               {iH>0&&<rect x={x} y={H-iH} width={BW} height={iH} fill="#16a34a" rx={2}/>}
@@ -351,6 +470,106 @@ function BarChart({ data }) {
   );
 }
 
+/* ── VITRINA ─────────────────────────────────────────────── */
+function Vitrina({ inventory, costCenters }) {
+  const [tab,setTab]       = useState('all');
+  const [fCC,setFCC]       = useState('all');
+  const [detail,setDetail] = useState(null);
+
+  // Supplies are not shown in Vitrina — they're not for sale
+  const filtered = inventory
+    .filter(i => i.type !== 'supply')
+    .filter(i => tab==='all' || i.type===tab)
+    .filter(i => fCC==='all' || i.ccId===fCC);
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      {/* Filters */}
+      <div style={{padding:'12px 16px 8px',borderBottom:'1px solid #e5e7eb',background:'#fafafa',flexShrink:0}}>
+        <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:10,marginBottom:4}}>
+          {[['all','🗂️ Todos'],['product','📦 Artículos'],['plant','🌿 Plantas']].map(([v,l])=>(
+            <Chip key={v} label={l} active={tab===v} onClick={()=>setTab(v)}/>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:8,overflowX:'auto'}}>
+          <Chip label="Todas" active={fCC==='all'} onClick={()=>setFCC('all')}/>
+          {costCenters.map(cc=><Chip key={cc.id} label={cc.name} active={fCC===cc.id} onClick={()=>setFCC(cc.id)} color={cc.color}/>)}
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div style={{flex:1,overflowY:'auto',padding:'12px'}}>
+        {filtered.length===0 ? (
+          <div style={{textAlign:'center',padding:'52px 16px',color:'#9ca3af'}}>
+            <div style={{fontSize:52,marginBottom:12}}>🏪</div>
+            <div style={{fontSize:16,fontWeight:600,color:'#374151',marginBottom:6}}>Vitrina vacía</div>
+            <div style={{fontSize:13}}>Agrega artículos o plantas en la pestaña Inventario</div>
+          </div>
+        ) : (
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            {filtered.map(item => {
+              const cc      = costCenters.find(c=>c.id===item.ccId);
+              const totalRev= (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
+              const profit  = totalRev - item.purchasePrice;
+              const url     = photoUrl(item.photoPath);
+              const sold    = item.type!=='plant' && item.sales?.length>0;
+
+              return (
+                <div key={item.id} onClick={()=>setDetail(item)}
+                  style={{ background:'#fff', borderRadius:14, overflow:'hidden',
+                    border:`1.5px solid ${sold?'#d1fae5':'#e5e7eb'}`, cursor:'pointer',
+                    boxShadow:'0 1px 4px rgba(0,0,0,0.06)', position:'relative' }}>
+
+                  {/* Sold badge */}
+                  {sold && (
+                    <div style={{ position:'absolute', top:8, right:8, zIndex:2,
+                      background:'#16a34a', color:'white', fontSize:10, fontWeight:700,
+                      padding:'3px 8px', borderRadius:20 }}>✓ Vendido</div>
+                  )}
+                  {item.type==='plant' && item.sales?.length>0 && (
+                    <div style={{ position:'absolute', top:8, right:8, zIndex:2,
+                      background:'#7c3aed', color:'white', fontSize:10, fontWeight:700,
+                      padding:'3px 8px', borderRadius:20 }}>{item.sales.length} cosecha{item.sales.length>1?'s':''}</div>
+                  )}
+
+                  {/* Photo square */}
+                  <div style={{ width:'100%', paddingTop:'100%', position:'relative', background:'#f3f4f6' }}>
+                    {url
+                      ? <img src={url} alt={item.name} style={{ position:'absolute', inset:0,
+                          width:'100%', height:'100%', objectFit:'cover' }}/>
+                      : <div style={{ position:'absolute', inset:0, display:'flex',
+                          alignItems:'center', justifyContent:'center', fontSize:48 }}>
+                          {item.type==='plant'?'🌿':'📦'}
+                        </div>}
+                  </div>
+
+                  {/* Info */}
+                  <div style={{padding:'10px 10px 12px'}}>
+                    <div style={{fontSize:13,fontWeight:700,color:'#111827',
+                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>
+                      {item.name}
+                    </div>
+                    <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:4}}>{cc?.name}</div>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <span style={{fontSize:11,color:'#9ca3af'}}>{daysSince(item.purchaseDate)}d</span>
+                      <span style={{fontSize:13,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
+                        {profit>=0?'+':''}{fmt(profit)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{height:24}}/>
+      </div>
+
+      {detail && <DetailModal item={detail} costCenters={costCenters} onClose={()=>setDetail(null)}/>}
+    </div>
+  );
+}
+
 /* ── DASHBOARD ───────────────────────────────────────────── */
 function Dashboard({ transactions, inventory, costCenters, month, year, onMonthChange }) {
   const ccStats = ccId => {
@@ -367,10 +586,10 @@ function Dashboard({ transactions, inventory, costCenters, month, year, onMonthC
   const recent = [
     ...transactions.filter(t=>inMY(t.date,month,year)).map(t=>({
       _key:t.id,_date:t.date,_icon:t.type==='income'?'💰':'💸',
-      _label:t.desc,_ccId:t.ccId,_amount:t.amount,_pos:t.type==='income',_sub:t.payment
+      _label:t.desc,_ccId:t.ccId,_amount:t.amount,_pos:t.type==='income',_sub:t.payment,_photo:null
     })),
     ...inventory.flatMap(i=>(i.sales||[]).filter(s=>inMY(s.saleDate,month,year)).map(s=>({
-      _key:s.id,_date:s.saleDate,_icon:i.type==='plant'?'🌿':'📦',
+      _key:s.id,_date:s.saleDate,_icon:null,_photo:i.photoPath,_type:i.type,
       _label:`Venta: ${i.name}`,_ccId:i.ccId,_amount:s.salePrice,_pos:true,_sub:s.platform
     })))
   ].sort((a,b)=>b._date.localeCompare(a._date)).slice(0,10);
@@ -407,9 +626,11 @@ function Dashboard({ transactions, inventory, costCenters, month, year, onMonthC
           : recent.map(item=>{
               const cc=costCenters.find(c=>c.id===item._ccId);
               return (
-                <div key={item._key} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',borderBottom:'1px solid #f3f4f6'}}>
+                <div key={item._key} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:'1px solid #f3f4f6'}}>
                   <div style={{display:'flex',alignItems:'center',gap:12,flex:1,minWidth:0}}>
-                    <span style={{fontSize:22,flexShrink:0}}>{item._icon}</span>
+                    {item._photo!==undefined
+                      ? <PhotoThumb photoPath={item._photo} type={item._type} size={38} radius={8}/>
+                      : <span style={{fontSize:22,flexShrink:0}}>{item._icon}</span>}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:14,fontWeight:500,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item._label}</div>
                       <div style={S.muted}>{item._date} · <span style={{color:cc?.color}}>{cc?.name}</span> · {item._sub}</div>
@@ -463,8 +684,7 @@ function Transactions({ transactions, inventory, costCenters, onAdd, onDelete })
                     </div>
                     <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0,marginLeft:8}}>
                       <span style={{fontSize:15,fontWeight:700,color:t.type==='income'?'#16a34a':'#dc2626'}}>
-                        {t.type==='income'?'+':'-'}{fmt(t.amount)}
-                      </span>
+                        {t.type==='income'?'+':'-'}{fmt(t.amount)}</span>
                       <button onClick={()=>onDelete(t.id)} style={{background:'#fef2f2',border:'none',cursor:'pointer',color:'#dc2626',fontSize:18,minWidth:38,minHeight:38,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
                     </div>
                   </div>
@@ -481,11 +701,13 @@ function Transactions({ transactions, inventory, costCenters, onAdd, onDelete })
 }
 
 /* ── INVENTORY ───────────────────────────────────────────── */
-function Inventory({ inventory, costCenters, onAdd, onSell, onDelete }) {
+function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onPhotoUpdate }) {
   const [tab,setTab]     = useState('all');
   const [fCC,setFCC]     = useState('all');
   const [saleItem,setSI] = useState(null);
+  const [photoItem,setPI]= useState(null);
   const filtered = inventory.filter(i=>tab==='all'||i.type===tab).filter(i=>fCC==='all'||i.ccId===fCC);
+
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
       <div style={{padding:'12px 16px 8px',borderBottom:'1px solid #e5e7eb',background:'#fafafa',flexShrink:0}}>
@@ -512,7 +734,15 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete }) {
                 <div key={item.id} style={S.card}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
                     <div style={{display:'flex',gap:12,flex:1,minWidth:0}}>
-                      <span style={{fontSize:26,flexShrink:0}}>{isSupply?'🧪':isPlant?'🌿':'📦'}</span>
+                      {/* Thumbnail — tap to change photo */}
+                      <div onClick={()=>!isSupply&&setPI(item)} style={{cursor:isSupply?'default':'pointer'}}>
+                        <PhotoThumb photoPath={item.photoPath} type={item.type} size={56}/>
+                        {!isSupply && (
+                          <div style={{fontSize:9,color:'#7c3aed',textAlign:'center',marginTop:3,fontWeight:600}}>
+                            {item.photoPath?'cambiar':'+ foto'}
+                          </div>
+                        )}
+                      </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:15,fontWeight:700,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
                         <div style={S.muted}>
@@ -573,6 +803,14 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete }) {
         <button onClick={onAdd} style={S.btn()}>+ Agregar Artículo / Planta / Insumo</button>
       </div>
       {saleItem&&<SaleModal item={saleItem} onSave={sale=>{onSell(saleItem.id,sale);setSI(null);}} onClose={()=>setSI(null)}/>}
+      {/* Photo edit modal for existing items */}
+      {photoItem&&(
+        <Modal title={`Foto: ${photoItem.name}`} onClose={()=>setPI(null)}>
+          <PhotoUpload itemId={photoItem.id} currentPath={photoItem.photoPath}
+            onUploaded={p=>{ onPhotoUpdate(photoItem.id,p); setPI(null); }}/>
+          <button style={{...S.btn('#6b7280'),marginTop:8}} onClick={()=>setPI(null)}>Cerrar</button>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -593,7 +831,7 @@ function Reports({ transactions, inventory, costCenters }) {
   const mData = MONTHS_S.map((m,mi)=>({label:m,...calcM(mi)}));
   const total  = mData.reduce((s,m)=>({income:s.income+m.income,expense:s.expense+m.expense,net:s.net+m.net}),{income:0,expense:0,net:0});
   const topItems = inventory.filter(i=>i.sales?.length>0&&(fCC==='all'||i.ccId===fCC))
-    .map(i=>({name:i.name,type:i.type,cnt:i.sales.length,
+    .map(i=>({name:i.name,type:i.type,photoPath:i.photoPath,cnt:i.sales.length,
       totalRev:(i.sales||[]).reduce((s,x)=>s+x.salePrice,0),
       profit:(i.sales||[]).reduce((s,x)=>s+x.salePrice,0)-i.purchasePrice,
       days:daysSince(i.purchaseDate)}))
@@ -654,10 +892,13 @@ function Reports({ transactions, inventory, costCenters }) {
       {topItems.length>0&&(<>
         <div style={{fontSize:13,fontWeight:700,color:'#6b7280',marginBottom:8}}>Mejores Artículos por Ganancia</div>
         {topItems.map((item,i)=>(
-          <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',borderBottom:'1px solid #f3f4f6'}}>
-            <div>
-              <div style={{fontSize:14,fontWeight:600,color:'#111827'}}>{item.type==='plant'?'🌿':'📦'} {item.name}</div>
-              <div style={S.muted}>{item.cnt} {item.type==='plant'?'cosecha(s)':'venta(s)'} · {item.days}d</div>
+          <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:'1px solid #f3f4f6'}}>
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <PhotoThumb photoPath={item.photoPath} type={item.type} size={40}/>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:'#111827'}}>{item.name}</div>
+                <div style={S.muted}>{item.cnt} {item.type==='plant'?'cosecha(s)':'venta(s)'} · {item.days}d</div>
+              </div>
             </div>
             <div style={{textAlign:'right',flexShrink:0,marginLeft:12}}>
               <div style={{fontSize:15,fontWeight:700,color:item.profit>=0?'#16a34a':'#dc2626'}}>{fmt(item.profit)}</div>
@@ -676,7 +917,6 @@ function Settings({ costCenters, setCostCenters }) {
   const [showAdd,setShowAdd]   = useState(false);
   const [newName,setNewName]   = useState('');
   const [newColor,setNewColor] = useState(CC_COLORS[0]);
-
   const addCC = async () => {
     if(!newName.trim()) return;
     const cc={id:uid(),name:newName.trim(),color:newColor};
@@ -690,21 +930,18 @@ function Settings({ costCenters, setCostCenters }) {
     await api.delete(`/api/cost-centers/${id}`);
     setCostCenters(p=>p.filter(c=>c.id!==id));
   };
-
   return (
     <div style={{padding:'18px 16px',overflowY:'auto',height:'100%',boxSizing:'border-box'}}>
       <div style={{fontWeight:800,fontSize:22,color:'#111827',marginBottom:4}}>Configuración</div>
-      <div style={{...S.muted,marginBottom:24}}>🌿 Bloom Aquatics · v2.0 · SQLite + Express</div>
+      <div style={{...S.muted,marginBottom:24}}>🌿 Bloom Aquatics · v3.0 · SQLite + Express + Fotos</div>
       <div style={{fontSize:15,fontWeight:700,color:'#374151',marginBottom:14}}>Centros de Costo</div>
       {costCenters.map(cc=>(
         <div key={cc.id} style={S.card}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <div style={{display:'flex',alignItems:'center',gap:14}}>
               <Avatar name={cc.name} color={cc.color} size={52}/>
-              <div>
-                <div style={{fontWeight:700,fontSize:18,color:cc.color}}>{cc.name}</div>
-                <div style={S.muted}>Centro de Costo</div>
-              </div>
+              <div><div style={{fontWeight:700,fontSize:18,color:cc.color}}>{cc.name}</div>
+                <div style={S.muted}>Centro de Costo</div></div>
             </div>
             {costCenters.length>1&&(
               <button onClick={()=>removeCC(cc.id)} style={{background:'#fef2f2',color:'#dc2626',border:'1px solid #fecaca',borderRadius:10,padding:'10px 16px',cursor:'pointer',fontSize:14,fontWeight:600,minHeight:46}}>Eliminar</button>
@@ -729,25 +966,22 @@ function Settings({ costCenters, setCostCenters }) {
               <button onClick={addCC} style={{flex:2,padding:'14px',borderRadius:10,background:'#7c3aed',color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer',minHeight:50}}>Guardar</button>
             </div>
           </div>}
-
       <div style={{marginTop:36,background:'#f5f3ff',borderRadius:14,padding:'18px 16px',border:'1px solid #ddd6fe'}}>
-        <div style={{fontWeight:700,fontSize:14,color:'#4c1d95',marginBottom:14}}>🖥️ Deployment en DietPi · Puerto 4567</div>
+        <div style={{fontWeight:700,fontSize:14,color:'#4c1d95',marginBottom:14}}>🖥️ Deploy en DietPi · Puerto 4567</div>
         {[
-          ['1. Clonar / subir archivos a DietPi','git clone … (o scp)'],
-          ['2. Instalar dependencias','npm install'],
-          ['3. Build del cliente React','npm run build'],
-          ['4. Iniciar servidor','node server.js'],
-          ['5. Con PM2 para que sobreviva reinicios','pm2 start server.js --name bloom\npm2 save'],
-          ['6. Nginx (apunta a puerto 4567)','proxy_pass http://localhost:4567;'],
+          ['1. Instalar (incluye multer)','npm install'],
+          ['2. Build React','npm run build'],
+          ['3. Iniciar','node server.js'],
+          ['4. PM2','pm2 start server.js --name bloom && pm2 save'],
         ].map(([step,cmd])=>(
-          <div key={step} style={{marginBottom:12}}>
+          <div key={step} style={{marginBottom:10}}>
             <div style={{fontSize:11,color:'#7c3aed',fontWeight:700,marginBottom:3}}>{step}</div>
-            <div style={{fontFamily:'monospace',fontSize:12,background:'#ede9fe',padding:'8px 12px',borderRadius:8,color:'#312e81',whiteSpace:'pre'}}>{cmd}</div>
+            <div style={{fontFamily:'monospace',fontSize:12,background:'#ede9fe',padding:'8px 12px',borderRadius:8,color:'#312e81'}}>{cmd}</div>
           </div>
         ))}
         <div style={{fontSize:12,color:'#6b7280',marginTop:8,lineHeight:1.8}}>
           Puerto: <strong>4567</strong> · DB: <strong>./bloom.db</strong><br/>
-          Backups: <strong>./backups/lun.db … dom.db</strong> (auto, 7 días rolling)
+          Fotos: <strong>./uploads/</strong> · Backups: <strong>./backups/</strong>
         </div>
       </div>
       <div style={{height:24}}/>
@@ -755,7 +989,7 @@ function Settings({ costCenters, setCostCenters }) {
   );
 }
 
-/* ── MAIN ────────────────────────────────────────────────── */
+/* ── MAIN APP ─────────────────────────────────────────────── */
 export default function App() {
   const [ready,setReady]            = useState(false);
   const [error,setError]            = useState(null);
@@ -776,21 +1010,26 @@ export default function App() {
 
   const changeMonth = d => { let m=month+d,y=year; if(m>11){m=0;y++;} if(m<0){m=11;y--;} setMonth(m);setYear(y); };
 
-  const addTxn   = async t   => { setTxns(p=>[...p,t]);   await api.post('/api/transactions',t).catch(console.error); };
-  const delTxn   = async id  => { setTxns(p=>p.filter(t=>t.id!==id)); await api.delete(`/api/transactions/${id}`).catch(console.error); };
-  const addInv   = async i   => { setInv(p=>[...p,i]);    await api.post('/api/inventory',i).catch(console.error); };
-  const sellInv  = async (itemId,sale) => {
+  const addTxn  = async t      => { setTxns(p=>[...p,t]); await api.post('/api/transactions',t).catch(console.error); };
+  const delTxn  = async id     => { setTxns(p=>p.filter(t=>t.id!==id)); await api.delete(`/api/transactions/${id}`).catch(console.error); };
+  const addInv  = async i      => { setInv(p=>[...p,i]); await api.post('/api/inventory',i).catch(console.error); };
+  const sellInv = async (itemId,sale) => {
     setInv(p=>p.map(i=>i.id===itemId?{...i,sales:[...(i.sales||[]),sale]}:i));
     await api.post(`/api/inventory/${itemId}/sales`,sale).catch(console.error);
   };
-  const delInv   = async id  => { setInv(p=>p.filter(i=>i.id!==id)); await api.delete(`/api/inventory/${id}`).catch(console.error); };
+  const delInv  = async id     => { setInv(p=>p.filter(i=>i.id!==id)); await api.delete(`/api/inventory/${id}`).catch(console.error); };
+  // Update photo in local state after upload
+  const updatePhoto = (itemId, photoPath) => {
+    setInv(p=>p.map(i=>i.id===itemId?{...i,photoPath}:i));
+  };
 
   const NAV = [
-    {id:'dashboard',   icon:'🏠',label:'Inicio'},
-    {id:'transactions',icon:'💳',label:'Registro'},
-    {id:'inventory',   icon:'📦',label:'Inventario'},
-    {id:'reports',     icon:'📊',label:'Reportes'},
-    {id:'settings',    icon:'⚙️',label:'Config'},
+    {id:'dashboard',   icon:'🏠', label:'Inicio'},
+    {id:'transactions',icon:'💳', label:'Registro'},
+    {id:'inventory',   icon:'📦', label:'Inventario'},
+    {id:'vitrina',     icon:'🏪', label:'Vitrina'},
+    {id:'reports',     icon:'📊', label:'Reportes'},
+    {id:'settings',    icon:'⚙️', label:'Config'},
   ];
 
   if(error) return (
@@ -801,7 +1040,6 @@ export default function App() {
       <button onClick={()=>window.location.reload()} style={{padding:'14px 28px',borderRadius:12,background:'#7c3aed',color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer'}}>Reintentar</button>
     </div>
   );
-
   if(!ready) return (
     <div style={{height:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16}}>
       <span style={{fontSize:52}}>🌿</span>
@@ -811,35 +1049,49 @@ export default function App() {
   );
 
   return (
-    /* position:relative + overflow:hidden = modals work as absolute children */
-    /* 100dvh = dynamic viewport height — accounts for mobile browser chrome  */
-    <div style={{height:'100dvh',display:'flex',flexDirection:'column',maxWidth:480,margin:'0 auto',position:'relative',overflow:'hidden',background:'#f9fafb'}}>
-      <div style={{background:'#7c3aed',color:'white',padding:'14px 18px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+    <div style={{height:'100dvh',display:'flex',flexDirection:'column',maxWidth:480,margin:'0 auto',
+      position:'relative',overflow:'hidden',background:'#f9fafb'}}>
+
+      {/* Header */}
+      <div style={{background:'#7c3aed',color:'white',padding:'12px 18px',
+        display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
         <div>
-          <div style={{fontWeight:800,fontSize:20,letterSpacing:'-0.01em'}}>🌿 Bloom Aquatics</div>
-          <div style={{fontSize:12,opacity:0.8,marginTop:1}}>Centro de Costos · Familiar</div>
+          <div style={{fontWeight:800,fontSize:19,letterSpacing:'-0.01em'}}>🌿 Bloom Aquatics</div>
+          <div style={{fontSize:11,opacity:0.8,marginTop:1}}>Centro de Costos · Familiar</div>
         </div>
-        <div style={{fontSize:11,opacity:0.65,textAlign:'right',lineHeight:1.6}}>{transactions.length} txn<br/>{inventory.length} items</div>
+        <div style={{fontSize:11,opacity:0.65,textAlign:'right',lineHeight:1.6}}>
+          {transactions.length} txn · {inventory.length} items
+        </div>
       </div>
 
+      {/* Content */}
       <div style={{flex:1,overflowY:'auto',minHeight:0}}>
         {tab==='dashboard'    && <Dashboard    transactions={transactions} inventory={inventory} costCenters={costCenters} month={month} year={year} onMonthChange={changeMonth}/>}
         {tab==='transactions' && <Transactions transactions={transactions} inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('txn')} onDelete={delTxn}/>}
-        {tab==='inventory'    && <Inventory    inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('inv')} onSell={sellInv} onDelete={delInv}/>}
+        {tab==='inventory'    && <Inventory    inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('inv')} onSell={sellInv} onDelete={delInv} onPhotoUpdate={updatePhoto}/>}
+        {tab==='vitrina'      && <Vitrina      inventory={inventory} costCenters={costCenters}/>}
         {tab==='reports'      && <Reports      transactions={transactions} inventory={inventory} costCenters={costCenters}/>}
         {tab==='settings'     && <Settings     costCenters={costCenters} setCostCenters={setCostCenters}/>}
       </div>
 
+      {/* Bottom Nav — 6 tabs, smaller labels */}
       <div style={{display:'flex',borderTop:'1px solid #e5e7eb',background:'#ffffff',flexShrink:0,
         paddingBottom:'env(safe-area-inset-bottom, 0px)'}}>
         {NAV.map(n=>(
-          <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:'10px 2px 14px',background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,minHeight:62}}>
-            <span style={{fontSize:22}}>{n.icon}</span>
-            <span style={{fontSize:10,fontWeight:tab===n.id?800:400,color:tab===n.id?'#7c3aed':'#9ca3af'}}>{n.label}</span>
+          <button key={n.id} onClick={()=>setTab(n.id)} style={{
+            flex:1, padding:'8px 1px 12px', background:'none', border:'none', cursor:'pointer',
+            display:'flex', flexDirection:'column', alignItems:'center', gap:2, minHeight:58,
+          }}>
+            <span style={{fontSize:20}}>{n.icon}</span>
+            <span style={{fontSize:9,fontWeight:tab===n.id?800:400,
+              color:tab===n.id?'#7c3aed':'#9ca3af',letterSpacing:'0.01em',lineHeight:1}}>
+              {n.label}
+            </span>
           </button>
         ))}
       </div>
 
+      {/* Modals */}
       {modal==='txn'&&<TxnModal costCenters={costCenters} inventory={inventory} onSave={addTxn} onClose={()=>setModal(null)}/>}
       {modal==='inv'&&<InvModal costCenters={costCenters} onSave={addInv} onClose={()=>setModal(null)}/>}
     </div>
