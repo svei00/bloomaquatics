@@ -27,6 +27,11 @@ const api = {
   },
 };
 
+/* ── VIEWPORT HEIGHT: dvh on mobile, vh on desktop ───────── */
+const IS_MOBILE = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const VH = IS_MOBILE ? '100dvh' : '100vh';
+
+
 const S = {
   input: { width:'100%', boxSizing:'border-box', padding:'13px 14px', borderRadius:10,
     border:'1.5px solid #d1d5db', fontSize:16, background:'#ffffff', color:'#111827',
@@ -472,96 +477,335 @@ function BarChart({ data }) {
 }
 
 /* ── VITRINA ─────────────────────────────────────────────── */
-function Vitrina({ inventory, costCenters }) {
-  const [tab,setTab]       = useState('all');
-  const [fCC,setFCC]       = useState('all');
-  const [detail,setDetail] = useState(null);
 
-  // Supplies are not shown in Vitrina — they're not for sale
+/* ── EDIT INVENTORY MODAL ────────────────────────────────── */
+function EditInvModal({ item, costCenters, onSave, onClose }) {
+  const SUPPLY_UNITS = ['unidad','botella','bolsa','galón','litro','kg','g','ml'];
+  const [type,setType]     = useState(item.type);
+  const [name,setName]     = useState(item.name);
+  const [pDate,setPDate]   = useState(item.purchaseDate);
+  const [pPrice,setPPrice] = useState(String(item.purchasePrice));
+  const [ccId,setCcId]     = useState(item.ccId);
+  const [qty,setQty]       = useState(String(item.qty||1));
+  const [unit,setUnit]     = useState(item.unit||'unidad');
+  const [notes,setNotes]   = useState(item.notes||'');
+
+  return (
+    <Modal title={`✏️ Editar artículo`} onClose={onClose}>
+      <div style={{background:'#fffbeb',border:'1px solid #f59e0b',borderRadius:10,
+        padding:'10px 14px',marginBottom:16,fontSize:12,color:'#92400e'}}>
+        ⚠️ Puedes corregir tipo, nombre, fecha y precio. Las cosechas/ventas no se afectan.
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
+        {[['product','📦','Artículo'],['plant','🌿','Planta'],['supply','🧪','Insumo']].map(([t,ic,lb])=>(
+          <button key={t} onClick={()=>setType(t)} style={{
+            padding:'10px 4px',borderRadius:10,textAlign:'center',cursor:'pointer',
+            border:`2px solid ${type===t?'#7c3aed':'#e5e7eb'}`,
+            background:type===t?'#f5f3ff':'#fafafa',
+            color:type===t?'#7c3aed':'#6b7280'}}>
+            <div style={{fontSize:22,marginBottom:2}}>{ic}</div>
+            <div style={{fontSize:11,fontWeight:700}}>{lb}</div>
+          </button>
+        ))}
+      </div>
+
+      <label style={S.label}>Nombre *</label>
+      <input value={name} onChange={e=>setName(e.target.value)} style={S.input}/>
+
+      <label style={S.label}>Fecha de Compra</label>
+      <input type="date" value={pDate} onChange={e=>setPDate(e.target.value)} style={S.input}/>
+
+      <div style={{display:'grid',gridTemplateColumns:type==='supply'?'1fr 70px 110px':'1fr',gap:8}}>
+        <div>
+          <label style={S.label}>Precio ($)</label>
+          <input type="number" step="0.01" min="0" value={pPrice}
+            onChange={e=>setPPrice(e.target.value)} style={{...S.input,marginBottom:0}}/>
+        </div>
+        {type==='supply' && (<>
+          <div><label style={S.label}>Cant.</label>
+            <input type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}
+              style={{...S.input,marginBottom:0}}/></div>
+          <div><label style={S.label}>Unidad</label>
+            <select value={unit} onChange={e=>setUnit(e.target.value)} style={{...S.input,marginBottom:0}}>
+              {SUPPLY_UNITS.map(u=><option key={u}>{u}</option>)}
+            </select></div>
+        </>)}
+      </div>
+      <div style={{height:12}}/>
+
+      <label style={S.label}>Centro de Costo</label>
+      <select value={ccId} onChange={e=>setCcId(e.target.value)} style={S.input}>
+        {costCenters.map(cc=><option key={cc.id} value={cc.id}>{cc.name}</option>)}
+      </select>
+
+      <label style={S.label}>Notas</label>
+      <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+        style={{...S.input,height:56,resize:'vertical'}} placeholder="Opcional…"/>
+
+      <div style={{display:'flex',gap:10}}>
+        <button onClick={onClose} style={{flex:1,padding:'14px',borderRadius:12,
+          background:'#f3f4f6',border:'none',color:'#374151',fontSize:15,cursor:'pointer',minHeight:50}}>
+          Cancelar</button>
+        <button onClick={()=>{
+          if(!name.trim()) return;
+          onSave(item.id,{type,name:name.trim(),purchaseDate:pDate,
+            purchasePrice:parseFloat(pPrice||0),ccId,qty:parseFloat(qty||1),unit,notes});
+          onClose();
+        }} style={{flex:2,padding:'14px',borderRadius:12,background:'#7c3aed',
+          color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer',minHeight:50}}>
+          Guardar Cambios</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ── VITRINA ─────────────────────────────────────────────── */
+function Vitrina({ inventory, costCenters }) {
+  const [viewMode,setViewMode] = useState('grid');  // 'grid' | 'list' | 'detail'
+  const [search,setSearch]     = useState('');
+  const [showProducts,setShowP]= useState(true);
+  const [showPlants,setShowPl] = useState(true);
+  const [showSold,setShowSold] = useState(true);
+  const [fCC,setFCC]           = useState('all');
+  const [sortBy,setSortBy]     = useState('name');
+  const [filterOpen,setFO]     = useState(false);
+  const [detail,setDetail]     = useState(null);
+
   const filtered = inventory
     .filter(i => i.type !== 'supply')
-    .filter(i => tab==='all' || i.type===tab)
-    .filter(i => fCC==='all' || i.ccId===fCC);
+    .filter(i => (i.type==='product' && showProducts) || (i.type==='plant' && showPlants))
+    .filter(i => fCC==='all' || i.ccId===fCC)
+    .filter(i => !search || i.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(i => showSold || !(i.type!=='plant' && i.sales?.length>0))
+    .sort((a,b) => {
+      const profitOf = x => (x.sales||[]).reduce((s,v)=>s+v.salePrice,0) - x.purchasePrice;
+      if (sortBy==='profit') return profitOf(b) - profitOf(a);
+      if (sortBy==='days')   return daysSince(b.purchaseDate) - daysSince(a.purchaseDate);
+      if (sortBy==='recent') return b.purchaseDate.localeCompare(a.purchaseDate);
+      return a.name.localeCompare(b.name);
+    });
+
+  const handleShare = () => {
+    const sep = '─'.repeat(28);
+    const lines = filtered.map(item => {
+      const rev    = (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
+      const profit = rev - item.purchasePrice;
+      const icon   = item.type==='plant' ? '🌿' : '📦';
+      const status = item.type!=='plant' && item.sales?.length>0 ? ' ✓ Vendido' : '';
+      return `${icon} ${item.name}${status}\n   Costo: ${fmt(item.purchasePrice)}  Ganancia: ${fmt(profit)}`;
+    }).join('\n');
+    const text = `🌿 Bloom Aquatics\n${sep}\n${lines}\n${sep}\n${filtered.length} artículos`;
+    if (navigator.share) {
+      navigator.share({ title: 'Bloom Aquatics — Vitrina', text }).catch(()=>{});
+    } else {
+      navigator.clipboard?.writeText(text)
+        .then(()=>alert('✓ Lista copiada. Pégala en WhatsApp, Facebook, OfferUp…'))
+        .catch(()=>alert(text));
+    }
+  };
+
+  const vBtn = active => ({
+    background: active?'#f5f3ff':'transparent',
+    border: `1.5px solid ${active?'#7c3aed':'#e5e7eb'}`,
+    borderRadius:8, padding:'6px 10px', cursor:'pointer',
+    color: active?'#7c3aed':'#9ca3af',
+    minWidth:40, minHeight:40, fontSize:19,
+    display:'flex', alignItems:'center', justifyContent:'center',
+  });
+
+  const renderItem = item => {
+    const cc       = costCenters.find(c=>c.id===item.ccId);
+    const totalRev = (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
+    const profit   = totalRev - item.purchasePrice;
+    const url      = photoUrl(item.photoPath);
+    const sold     = item.type!=='plant' && item.sales?.length>0;
+    const harvests = item.type==='plant' ? item.sales?.length||0 : 0;
+
+    /* ── LIST row ── */
+    if (viewMode==='list') return (
+      <div key={item.id} onClick={()=>setDetail(item)}
+        style={{display:'flex',alignItems:'center',gap:12,padding:'11px 16px',
+          borderBottom:'1px solid #f3f4f6',cursor:'pointer',background:'#fff'}}>
+        <PhotoThumb photoPath={item.photoPath} type={item.type} size={46} radius={8}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:700,color:'#111827',overflow:'hidden',
+            textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
+          <div style={{fontSize:11,color:cc?.color,fontWeight:600}}>
+            {cc?.name}
+            {sold     && <span style={{color:'#16a34a'}}> · ✓ Vendido</span>}
+            {harvests>0 && <span style={{color:'#7c3aed'}}> · {harvests} cosecha{harvests>1?'s':''}</span>}
+          </div>
+        </div>
+        <div style={{textAlign:'right',flexShrink:0}}>
+          <div style={{fontSize:14,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
+            {profit>=0?'+':''}{fmt(profit)}</div>
+          <div style={{fontSize:11,color:'#9ca3af'}}>{fmt(item.purchasePrice)} costo</div>
+        </div>
+      </div>
+    );
+
+    /* ── DETAIL card ── */
+    if (viewMode==='detail') return (
+      <div key={item.id} style={{...S.card,margin:'0 12px 12px'}}>
+        <div style={{display:'flex',gap:12,marginBottom:8}}>
+          <div onClick={()=>setDetail(item)} style={{cursor:'pointer',flexShrink:0}}>
+            <PhotoThumb photoPath={item.photoPath} type={item.type} size={72} radius={12}/>
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:15,fontWeight:700,color:'#111827',overflow:'hidden',
+              textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
+            <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:6}}>{cc?.name}</div>
+            <div style={{display:'flex',gap:6}}>
+              {[['Costo',fmt(item.purchasePrice),'#6b7280'],
+                ['Ventas',fmt(totalRev),'#16a34a'],
+                ['Ganancia',fmt(profit),profit>=0?'#1d4ed8':'#dc2626']].map(([l,v,c])=>(
+                <div key={l} style={{flex:1,background:'#f9fafb',borderRadius:8,padding:'6px 4px',textAlign:'center'}}>
+                  <div style={{fontSize:9,color:'#9ca3af',fontWeight:700,textTransform:'uppercase'}}>{l}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:c,marginTop:2}}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {item.notes&&<div style={{fontSize:12,color:'#6b7280',fontStyle:'italic',
+          padding:'6px 10px',background:'#f9fafb',borderRadius:8,marginTop:4}}>{item.notes}</div>}
+      </div>
+    );
+
+    /* ── GRID card (default) ── */
+    return (
+      <div key={item.id} onClick={()=>setDetail(item)}
+        style={{background:'#fff',borderRadius:14,overflow:'hidden',cursor:'pointer',
+          border:`1.5px solid ${sold?'#d1fae5':'#e5e7eb'}`,
+          boxShadow:'0 1px 4px rgba(0,0,0,0.06)',position:'relative'}}>
+        {sold && (
+          <div style={{position:'absolute',top:8,right:8,zIndex:2,background:'#16a34a',
+            color:'white',fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20}}>✓ Vendido</div>
+        )}
+        {harvests>0 && (
+          <div style={{position:'absolute',top:8,right:8,zIndex:2,background:'#7c3aed',
+            color:'white',fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20}}>
+            {harvests} cosecha{harvests>1?'s':''}</div>
+        )}
+        <div style={{width:'100%',paddingTop:'100%',position:'relative',background:'#f3f4f6'}}>
+          {url
+            ? <img src={url} alt={item.name} style={{position:'absolute',inset:0,
+                width:'100%',height:'100%',objectFit:'cover'}}/>
+            : <div style={{position:'absolute',inset:0,display:'flex',
+                alignItems:'center',justifyContent:'center',fontSize:48}}>
+                {item.type==='plant'?'🌿':'📦'}
+              </div>}
+        </div>
+        <div style={{padding:'10px 10px 12px'}}>
+          <div style={{fontSize:13,fontWeight:700,color:'#111827',overflow:'hidden',
+            textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{item.name}</div>
+          <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:4}}>{cc?.name}</div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:11,color:'#9ca3af'}}>{daysSince(item.purchaseDate)}d</span>
+            <span style={{fontSize:13,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
+              {profit>=0?'+':''}{fmt(profit)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
-      {/* Filters */}
-      <div style={{padding:'12px 16px 8px',borderBottom:'1px solid #e5e7eb',background:'#fafafa',flexShrink:0}}>
-        <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:10,marginBottom:4}}>
-          {[['all','🗂️ Todos'],['product','📦 Artículos'],['plant','🌿 Plantas']].map(([v,l])=>(
-            <Chip key={v} label={l} active={tab===v} onClick={()=>setTab(v)}/>
-          ))}
+
+      {/* ── Toolbar ── */}
+      <div style={{padding:'10px 12px',borderBottom:'1px solid #e5e7eb',
+        background:'#fafafa',flexShrink:0}}>
+
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+          {/* View mode */}
+          <button style={vBtn(viewMode==='grid')}   title="Vista cuadrícula" onClick={()=>setViewMode('grid')}>⊞</button>
+          <button style={vBtn(viewMode==='list')}   title="Vista lista"      onClick={()=>setViewMode('list')}>☰</button>
+          <button style={vBtn(viewMode==='detail')} title="Vista detalle"    onClick={()=>setViewMode('detail')}>≡</button>
+
+          {/* Search */}
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="🔍 Buscar…"
+            style={{...S.input,flex:1,marginBottom:0,minHeight:40,padding:'8px 12px',fontSize:14}}/>
+
+          {/* Share */}
+          <button onClick={handleShare} title="Compartir lista"
+            style={{background:'#7c3aed',border:'none',borderRadius:10,padding:'8px 12px',
+              cursor:'pointer',color:'white',fontSize:15,fontWeight:700,
+              minHeight:40,minWidth:40,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            📤
+          </button>
         </div>
-        <div style={{display:'flex',gap:8,overflowX:'auto'}}>
-          <Chip label="Todas" active={fCC==='all'} onClick={()=>setFCC('all')}/>
-          {costCenters.map(cc=><Chip key={cc.id} label={cc.name} active={fCC===cc.id} onClick={()=>setFCC(cc.id)} color={cc.color}/>)}
-        </div>
+
+        {/* Collapsible filter row */}
+        <button onClick={()=>setFO(o=>!o)}
+          style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
+            background:'none',border:'none',cursor:'pointer',padding:'4px 0',
+            color:'#6b7280',fontSize:13}}>
+          <span style={{fontWeight:600}}>
+            Filtros · {filtered.length} artículo{filtered.length!==1?'s':''}
+          </span>
+          <span style={{fontSize:18,display:'inline-block',transition:'transform 0.2s',
+            transform:filterOpen?'rotate(180deg)':'rotate(0deg)'}}>⌄</span>
+        </button>
+
+        {filterOpen && (
+          <div style={{paddingTop:10,display:'flex',flexDirection:'column',gap:10,
+            borderTop:'1px solid #e5e7eb',marginTop:6}}>
+
+            {/* Checkboxes */}
+            <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
+              {[
+                [showProducts, setShowP,  '📦 Artículos'],
+                [showPlants,   setShowPl, '🌿 Plantas'],
+                [showSold,     setShowSold,'✓ Vendidos'],
+              ].map(([checked,setter,label],i)=>(
+                <label key={i} style={{display:'flex',alignItems:'center',gap:6,
+                  fontSize:13,color:'#374151',cursor:'pointer',userSelect:'none'}}>
+                  <input type="checkbox" checked={checked}
+                    onChange={e=>setter(e.target.checked)}
+                    style={{width:18,height:18,accentColor:'#7c3aed',cursor:'pointer'}}/>
+                  {label}
+                </label>
+              ))}
+            </div>
+
+            {/* Person filter + sort */}
+            <div style={{display:'flex',gap:8}}>
+              <select value={fCC} onChange={e=>setFCC(e.target.value)}
+                style={{...S.input,flex:1,marginBottom:0,minHeight:40,padding:'8px 10px',fontSize:13}}>
+                <option value="all">Todas las personas</option>
+                {costCenters.map(cc=><option key={cc.id} value={cc.id}>{cc.name}</option>)}
+              </select>
+              <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
+                style={{...S.input,flex:1,marginBottom:0,minHeight:40,padding:'8px 10px',fontSize:13}}>
+                <option value="name">A–Z Nombre</option>
+                <option value="profit">Mayor ganancia</option>
+                <option value="days">Más tiempo en stock</option>
+                <option value="recent">Más reciente</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Grid */}
-      <div style={{flex:1,overflowY:'auto',padding:'12px'}}>
+      {/* ── Items area ── */}
+      <div style={{flex:1,overflowY:'auto'}}>
         {filtered.length===0 ? (
           <div style={{textAlign:'center',padding:'52px 16px',color:'#9ca3af'}}>
             <div style={{fontSize:52,marginBottom:12}}>🏪</div>
-            <div style={{fontSize:16,fontWeight:600,color:'#374151',marginBottom:6}}>Vitrina vacía</div>
-            <div style={{fontSize:13}}>Agrega artículos o plantas en la pestaña Inventario</div>
+            <div style={{fontSize:16,fontWeight:600,color:'#374151',marginBottom:6}}>Sin resultados</div>
+            <div style={{fontSize:13}}>Cambia los filtros o la búsqueda</div>
           </div>
+        ) : viewMode==='grid' ? (
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,padding:12}}>
+            {filtered.map(renderItem)}
+          </div>
+        ) : viewMode==='list' ? (
+          <div style={{background:'#fff'}}>{filtered.map(renderItem)}</div>
         ) : (
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            {filtered.map(item => {
-              const cc      = costCenters.find(c=>c.id===item.ccId);
-              const totalRev= (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
-              const profit  = totalRev - item.purchasePrice;
-              const url     = photoUrl(item.photoPath);
-              const sold    = item.type!=='plant' && item.sales?.length>0;
-
-              return (
-                <div key={item.id} onClick={()=>setDetail(item)}
-                  style={{ background:'#fff', borderRadius:14, overflow:'hidden',
-                    border:`1.5px solid ${sold?'#d1fae5':'#e5e7eb'}`, cursor:'pointer',
-                    boxShadow:'0 1px 4px rgba(0,0,0,0.06)', position:'relative' }}>
-
-                  {/* Sold badge */}
-                  {sold && (
-                    <div style={{ position:'absolute', top:8, right:8, zIndex:2,
-                      background:'#16a34a', color:'white', fontSize:10, fontWeight:700,
-                      padding:'3px 8px', borderRadius:20 }}>✓ Vendido</div>
-                  )}
-                  {item.type==='plant' && item.sales?.length>0 && (
-                    <div style={{ position:'absolute', top:8, right:8, zIndex:2,
-                      background:'#7c3aed', color:'white', fontSize:10, fontWeight:700,
-                      padding:'3px 8px', borderRadius:20 }}>{item.sales.length} cosecha{item.sales.length>1?'s':''}</div>
-                  )}
-
-                  {/* Photo square */}
-                  <div style={{ width:'100%', paddingTop:'100%', position:'relative', background:'#f3f4f6' }}>
-                    {url
-                      ? <img src={url} alt={item.name} style={{ position:'absolute', inset:0,
-                          width:'100%', height:'100%', objectFit:'cover' }}/>
-                      : <div style={{ position:'absolute', inset:0, display:'flex',
-                          alignItems:'center', justifyContent:'center', fontSize:48 }}>
-                          {item.type==='plant'?'🌿':'📦'}
-                        </div>}
-                  </div>
-
-                  {/* Info */}
-                  <div style={{padding:'10px 10px 12px'}}>
-                    <div style={{fontSize:13,fontWeight:700,color:'#111827',
-                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>
-                      {item.name}
-                    </div>
-                    <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:4}}>{cc?.name}</div>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <span style={{fontSize:11,color:'#9ca3af'}}>{daysSince(item.purchaseDate)}d</span>
-                      <span style={{fontSize:13,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
-                        {profit>=0?'+':''}{fmt(profit)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <div style={{paddingTop:12}}>{filtered.map(renderItem)}</div>
         )}
         <div style={{height:24}}/>
       </div>
@@ -571,7 +815,6 @@ function Vitrina({ inventory, costCenters }) {
   );
 }
 
-/* ── DASHBOARD ───────────────────────────────────────────── */
 function Dashboard({ transactions, inventory, costCenters, month, year, onMonthChange }) {
   const ccStats = ccId => {
     const txns    = transactions.filter(t=>t.ccId===ccId&&inMY(t.date,month,year));
@@ -702,16 +945,24 @@ function Transactions({ transactions, inventory, costCenters, onAdd, onDelete })
 }
 
 /* ── INVENTORY ───────────────────────────────────────────── */
-function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onPhotoUpdate }) {
-  const [tab,setTab]     = useState('all');
-  const [fCC,setFCC]     = useState('all');
-  const [saleItem,setSI] = useState(null);
-  const [photoItem,setPI]= useState(null);
-  const filtered = inventory.filter(i=>tab==='all'||i.type===tab).filter(i=>fCC==='all'||i.ccId===fCC);
+
+/* ── INVENTORY ───────────────────────────────────────────── */
+function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onEdit, onPhotoUpdate }) {
+  const [tab,setTab]       = useState('all');
+  const [fCC,setFCC]       = useState('all');
+  const [saleItem,setSI]   = useState(null);
+  const [photoItem,setPI]  = useState(null);
+  const [editItem,setEI]   = useState(null);
+
+  const filtered = inventory
+    .filter(i=>tab==='all'||i.type===tab)
+    .filter(i=>fCC==='all'||i.ccId===fCC);
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
-      <div style={{padding:'12px 16px 8px',borderBottom:'1px solid #e5e7eb',background:'#fafafa',flexShrink:0}}>
+      {/* Filter chips */}
+      <div style={{padding:'12px 16px 8px',borderBottom:'1px solid #e5e7eb',
+        background:'#fafafa',flexShrink:0}}>
         <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:10,marginBottom:4}}>
           {[['all','🗂️ Todos'],['product','📦 Artículos'],['plant','🌿 Plantas'],['supply','🧪 Insumos']].map(([v,l])=>(
             <Chip key={v} label={l} active={tab===v} onClick={()=>setTab(v)}/>
@@ -719,12 +970,19 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onPhotoUpd
         </div>
         <div style={{display:'flex',gap:8,overflowX:'auto'}}>
           <Chip label="Todos" active={fCC==='all'} onClick={()=>setFCC('all')}/>
-          {costCenters.map(cc=><Chip key={cc.id} label={cc.name} active={fCC===cc.id} onClick={()=>setFCC(cc.id)} color={cc.color}/>)}
+          {costCenters.map(cc=>(
+            <Chip key={cc.id} label={cc.name} active={fCC===cc.id}
+              onClick={()=>setFCC(cc.id)} color={cc.color}/>
+          ))}
         </div>
       </div>
+
+      {/* Item list */}
       <div style={{flex:1,overflowY:'auto',padding:'10px 16px'}}>
         {filtered.length===0
-          ? <div style={{textAlign:'center',padding:'52px 0',color:'#9ca3af',fontSize:15}}>Sin artículos</div>
+          ? <div style={{textAlign:'center',padding:'52px 0',color:'#9ca3af',fontSize:15}}>
+              Sin artículos
+            </div>
           : filtered.map(item=>{
               const cc=costCenters.find(c=>c.id===item.ccId);
               const isPlant=item.type==='plant', isSupply=item.type==='supply';
@@ -733,19 +991,26 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onPhotoUpd
               const profit=totalRev-item.purchasePrice;
               return (
                 <div key={item.id} style={S.card}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
+                  {/* Header row: photo + info + edit/delete */}
+                  <div style={{display:'flex',justifyContent:'space-between',
+                    alignItems:'flex-start',marginBottom:12}}>
                     <div style={{display:'flex',gap:12,flex:1,minWidth:0}}>
                       {/* Thumbnail — tap to change photo */}
-                      <div onClick={()=>!isSupply&&setPI(item)} style={{cursor:isSupply?'default':'pointer'}}>
+                      <div onClick={()=>!isSupply&&setPI(item)}
+                        style={{cursor:isSupply?'default':'pointer'}}>
                         <PhotoThumb photoPath={item.photoPath} type={item.type} size={56}/>
                         {!isSupply && (
-                          <div style={{fontSize:9,color:'#7c3aed',textAlign:'center',marginTop:3,fontWeight:600}}>
+                          <div style={{fontSize:9,color:'#7c3aed',textAlign:'center',
+                            marginTop:3,fontWeight:600}}>
                             {item.photoPath?'cambiar':'+ foto'}
                           </div>
                         )}
                       </div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:15,fontWeight:700,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
+                        <div style={{fontSize:15,fontWeight:700,color:'#111827',
+                          overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                          {item.name}
+                        </div>
                         <div style={S.muted}>
                           {item.purchaseDate} · <span style={{color:cc?.color}}>{cc?.name}</span>
                           {!isSupply&&<span> · {daysSince(item.purchaseDate)}d en stock</span>}
@@ -754,38 +1019,66 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onPhotoUpd
                         {item.notes&&<div style={{...S.muted,fontStyle:'italic'}}>{item.notes}</div>}
                       </div>
                     </div>
-                    <button onClick={()=>onDelete(item.id)} style={{background:'#fef2f2',border:'none',cursor:'pointer',color:'#dc2626',fontSize:18,minWidth:36,minHeight:36,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
+                    {/* Edit + Delete buttons */}
+                    <div style={{display:'flex',gap:6,flexShrink:0,marginLeft:8}}>
+                      <button onClick={()=>setEI(item)}
+                        title="Editar artículo"
+                        style={{background:'#f5f3ff',border:'none',cursor:'pointer',
+                          color:'#7c3aed',fontSize:15,minWidth:36,minHeight:36,
+                          borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                        ✏️
+                      </button>
+                      <button onClick={()=>onDelete(item.id)}
+                        title="Eliminar"
+                        style={{background:'#fef2f2',border:'none',cursor:'pointer',
+                          color:'#dc2626',fontSize:18,minWidth:36,minHeight:36,
+                          borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                        ×
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Stats */}
                   {isSupply
-                    ? <div style={{background:'#fef2f2',borderRadius:10,padding:'10px 14px',display:'flex',justifyContent:'space-between'}}>
+                    ? <div style={{background:'#fef2f2',borderRadius:10,padding:'10px 14px',
+                        display:'flex',justifyContent:'space-between'}}>
                         <span style={{fontSize:13,color:'#6b7280'}}>Gasto registrado</span>
-                        <span style={{fontSize:15,fontWeight:700,color:'#dc2626'}}>{fmt(item.purchasePrice)}</span>
+                        <span style={{fontSize:15,fontWeight:700,color:'#dc2626'}}>
+                          {fmt(item.purchasePrice)}</span>
                       </div>
                     : <div style={{display:'flex',gap:8,marginBottom:salesCnt>0&&isPlant?12:0}}>
-                        {[['Costo',fmt(item.purchasePrice),'#6b7280'],
-                          ['Ventas',fmt(totalRev),'#16a34a'],
-                          ['Ganancia',fmt(profit),profit>=0?'#1d4ed8':'#dc2626'],
+                        {[['Costo',   fmt(item.purchasePrice),                        '#6b7280'],
+                          ['Ventas',  fmt(totalRev),                                  '#16a34a'],
+                          ['Ganancia',fmt(profit),           profit>=0?'#1d4ed8':'#dc2626'],
                           [isPlant?'Cosechas':'Estado',
-                            isPlant?`${salesCnt}x`:(salesCnt>0?'✓ Vendido':'Disponible'),
-                            isPlant?'#7c3aed':salesCnt>0?'#16a34a':'#d97706']
+                           isPlant?`${salesCnt}x`:(salesCnt>0?'✓ Vendido':'Disponible'),
+                           isPlant?'#7c3aed':salesCnt>0?'#16a34a':'#d97706']
                         ].map(([l,v,c])=>(
-                          <div key={l} style={{flex:1,background:'#f9fafb',borderRadius:8,padding:'8px 4px',textAlign:'center'}}>
-                            <div style={{fontSize:10,color:'#9ca3af',fontWeight:600,textTransform:'uppercase'}}>{l}</div>
+                          <div key={l} style={{flex:1,background:'#f9fafb',borderRadius:8,
+                            padding:'8px 4px',textAlign:'center'}}>
+                            <div style={{fontSize:10,color:'#9ca3af',fontWeight:600,
+                              textTransform:'uppercase'}}>{l}</div>
                             <div style={{fontSize:13,fontWeight:700,color:c,marginTop:2}}>{v}</div>
                           </div>
                         ))}
                       </div>}
+
+                  {/* Harvest history for plants */}
                   {isPlant&&salesCnt>0&&(
                     <div style={{borderTop:'1px solid #f3f4f6',paddingTop:10,marginTop:4}}>
-                      <div style={{fontSize:12,fontWeight:700,color:'#6b7280',marginBottom:6}}>Historial de cosechas:</div>
+                      <div style={{fontSize:12,fontWeight:700,color:'#6b7280',marginBottom:6}}>
+                        Historial de cosechas:</div>
                       {item.sales.map((s,i)=>(
-                        <div key={s.id} style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#6b7280',padding:'3px 0'}}>
+                        <div key={s.id} style={{display:'flex',justifyContent:'space-between',
+                          fontSize:12,color:'#6b7280',padding:'3px 0'}}>
                           <span>#{i+1} · {s.saleDate} · {s.platform}</span>
                           <span style={{color:'#16a34a',fontWeight:700}}>{fmt(s.salePrice)}</span>
                         </div>
                       ))}
                     </div>
                   )}
+
+                  {/* Sell / Harvest button */}
                   {!isSupply&&(isPlant||salesCnt===0)&&(
                     <button onClick={()=>setSI(item)} style={{
                       width:'100%',marginTop:12,padding:'13px',borderRadius:10,
@@ -800,23 +1093,36 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onPhotoUpd
             })}
         <div style={{height:80}}/>
       </div>
-      <div style={{padding:'12px 16px',background:'#ffffff',borderTop:'1px solid #e5e7eb',flexShrink:0}}>
+
+      {/* Add button */}
+      <div style={{padding:'12px 16px',background:'#ffffff',
+        borderTop:'1px solid #e5e7eb',flexShrink:0}}>
         <button onClick={onAdd} style={S.btn()}>+ Agregar Artículo / Planta / Insumo</button>
       </div>
-      {saleItem&&<SaleModal item={saleItem} onSave={sale=>{onSell(saleItem.id,sale);setSI(null);}} onClose={()=>setSI(null)}/>}
-      {/* Photo edit modal for existing items */}
+
+      {/* Modals */}
+      {saleItem&&(
+        <SaleModal item={saleItem}
+          onSave={sale=>{onSell(saleItem.id,sale);setSI(null);}}
+          onClose={()=>setSI(null)}/>
+      )}
+      {editItem&&(
+        <EditInvModal item={editItem} costCenters={costCenters}
+          onSave={onEdit}
+          onClose={()=>setEI(null)}/>
+      )}
       {photoItem&&(
         <Modal title={`Foto: ${photoItem.name}`} onClose={()=>setPI(null)}>
           <PhotoUpload itemId={photoItem.id} currentPath={photoItem.photoPath}
             onUploaded={p=>{ onPhotoUpdate(photoItem.id,p); setPI(null); }}/>
-          <button style={{...S.btn('#6b7280'),marginTop:8}} onClick={()=>setPI(null)}>Cerrar</button>
+          <button style={{...S.btn('#6b7280'),marginTop:8}} onClick={()=>setPI(null)}>
+            Cerrar</button>
         </Modal>
       )}
     </div>
   );
 }
 
-/* ── REPORTS ─────────────────────────────────────────────── */
 function Reports({ transactions, inventory, costCenters }) {
   const [year,setYear] = useState(new Date().getFullYear());
   const [fCC,setFCC]   = useState('all');
@@ -991,6 +1297,8 @@ function Settings({ costCenters, setCostCenters }) {
 }
 
 /* ── MAIN APP ─────────────────────────────────────────────── */
+
+/* ── APP ─────────────────────────────────────────────────── */
 export default function App() {
   const [ready,setReady]            = useState(false);
   const [error,setError]            = useState(null);
@@ -1004,12 +1312,19 @@ export default function App() {
   const [year,setYear]   = useState(now.getFullYear());
 
   useEffect(()=>{
-    Promise.all([api.get('/api/cost-centers'),api.get('/api/transactions'),api.get('/api/inventory')])
-      .then(([cc,txn,inv])=>{ setCostCenters(cc); setTxns(txn); setInv(inv); setReady(true); })
+    Promise.all([
+      api.get('/api/cost-centers'),
+      api.get('/api/transactions'),
+      api.get('/api/inventory'),
+    ]).then(([cc,txn,inv])=>{ setCostCenters(cc); setTxns(txn); setInv(inv); setReady(true); })
       .catch(()=>setError('No se puede conectar al servidor. ¿Está corriendo node server.js?'));
   },[]);
 
-  const changeMonth = d => { let m=month+d,y=year; if(m>11){m=0;y++;} if(m<0){m=11;y--;} setMonth(m);setYear(y); };
+  const changeMonth = d => {
+    let m=month+d, y=year;
+    if(m>11){m=0;y++;} if(m<0){m=11;y--;}
+    setMonth(m); setYear(y);
+  };
 
   const addTxn  = async t      => { setTxns(p=>[...p,t]); await api.post('/api/transactions',t).catch(console.error); };
   const delTxn  = async id     => { setTxns(p=>p.filter(t=>t.id!==id)); await api.delete(`/api/transactions/${id}`).catch(console.error); };
@@ -1019,7 +1334,10 @@ export default function App() {
     await api.post(`/api/inventory/${itemId}/sales`,sale).catch(console.error);
   };
   const delInv  = async id     => { setInv(p=>p.filter(i=>i.id!==id)); await api.delete(`/api/inventory/${id}`).catch(console.error); };
-  // Update photo in local state after upload
+  const editInv = async (id, changes) => {
+    setInv(p=>p.map(i=>i.id===id?{...i,...changes}:i));
+    await api.patch(`/api/inventory/${id}`, changes).catch(console.error);
+  };
   const updatePhoto = (itemId, photoPath) => {
     setInv(p=>p.map(i=>i.id===itemId?{...i,photoPath}:i));
   };
@@ -1034,15 +1352,20 @@ export default function App() {
   ];
 
   if(error) return (
-    <div style={{height:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:24,textAlign:'center'}}>
+    <div style={{height:VH,display:'flex',flexDirection:'column',alignItems:'center',
+      justifyContent:'center',gap:16,padding:24,textAlign:'center'}}>
       <span style={{fontSize:48}}>⚠️</span>
       <div style={{fontWeight:700,fontSize:18,color:'#dc2626'}}>Error de conexión</div>
       <div style={{fontSize:14,color:'#6b7280'}}>{error}</div>
-      <button onClick={()=>window.location.reload()} style={{padding:'14px 28px',borderRadius:12,background:'#7c3aed',color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer'}}>Reintentar</button>
+      <button onClick={()=>window.location.reload()} style={{padding:'14px 28px',borderRadius:12,
+        background:'#7c3aed',color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer'}}>
+        Reintentar</button>
     </div>
   );
+
   if(!ready) return (
-    <div style={{height:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16}}>
+    <div style={{height:VH,display:'flex',flexDirection:'column',alignItems:'center',
+      justifyContent:'center',gap:16}}>
       <span style={{fontSize:52}}>🌿</span>
       <span style={{fontSize:20,fontWeight:700,color:'#111827'}}>Bloom Aquatics</span>
       <span style={{fontSize:14,color:'#9ca3af'}}>Conectando con el servidor…</span>
@@ -1050,7 +1373,8 @@ export default function App() {
   );
 
   return (
-    <div style={{height:'100dvh',display:'flex',flexDirection:'column',maxWidth:480,margin:'0 auto',
+    /* VH = 100dvh on mobile (accounts for browser chrome), 100vh on desktop */
+    <div style={{height:VH,display:'flex',flexDirection:'column',maxWidth:480,margin:'0 auto',
       position:'relative',overflow:'hidden',background:'#f9fafb'}}>
 
       {/* Header */}
@@ -1069,19 +1393,20 @@ export default function App() {
       <div style={{flex:1,overflowY:'auto',minHeight:0}}>
         {tab==='dashboard'    && <Dashboard    transactions={transactions} inventory={inventory} costCenters={costCenters} month={month} year={year} onMonthChange={changeMonth}/>}
         {tab==='transactions' && <Transactions transactions={transactions} inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('txn')} onDelete={delTxn}/>}
-        {tab==='inventory'    && <Inventory    inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('inv')} onSell={sellInv} onDelete={delInv} onPhotoUpdate={updatePhoto}/>}
+        {tab==='inventory'    && <Inventory    inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('inv')} onSell={sellInv} onDelete={delInv} onEdit={editInv} onPhotoUpdate={updatePhoto}/>}
         {tab==='vitrina'      && <Vitrina      inventory={inventory} costCenters={costCenters}/>}
         {tab==='reports'      && <Reports      transactions={transactions} inventory={inventory} costCenters={costCenters}/>}
         {tab==='settings'     && <Settings     costCenters={costCenters} setCostCenters={setCostCenters}/>}
       </div>
 
-      {/* Bottom Nav — 6 tabs, smaller labels */}
-      <div style={{display:'flex',borderTop:'1px solid #e5e7eb',background:'#ffffff',flexShrink:0,
-        paddingBottom:'env(safe-area-inset-bottom, 0px)'}}>
+      {/* Bottom Nav */}
+      <div style={{display:'flex',borderTop:'1px solid #e5e7eb',background:'#ffffff',
+        flexShrink:0,paddingBottom:'env(safe-area-inset-bottom, 0px)'}}>
         {NAV.map(n=>(
           <button key={n.id} onClick={()=>setTab(n.id)} style={{
-            flex:1, padding:'8px 1px 12px', background:'none', border:'none', cursor:'pointer',
-            display:'flex', flexDirection:'column', alignItems:'center', gap:2, minHeight:58,
+            flex:1, padding:'8px 1px 12px', background:'none', border:'none',
+            cursor:'pointer', display:'flex', flexDirection:'column',
+            alignItems:'center', gap:2, minHeight:58,
           }}>
             <span style={{fontSize:20}}>{n.icon}</span>
             <span style={{fontSize:9,fontWeight:tab===n.id?800:400,
