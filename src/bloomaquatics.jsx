@@ -562,15 +562,17 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
 
 /* ── VITRINA ─────────────────────────────────────────────── */
 function Vitrina({ inventory, costCenters }) {
-  const [viewMode,setViewMode] = useState('grid');  // 'grid' | 'list' | 'detail'
+  const [viewMode,setViewMode] = useState('grid');
   const [search,setSearch]     = useState('');
   const [showProducts,setShowP]= useState(true);
   const [showPlants,setShowPl] = useState(true);
   const [showSold,setShowSold] = useState(true);
+  const [showPrices,setShowPr] = useState(false);   // OFF by default — clients dont need to see costs
   const [fCC,setFCC]           = useState('all');
   const [sortBy,setSortBy]     = useState('name');
   const [filterOpen,setFO]     = useState(false);
   const [detail,setDetail]     = useState(null);
+  const [generating,setGen]    = useState(false);
 
   const filtered = inventory
     .filter(i => i.type !== 'supply')
@@ -586,23 +588,185 @@ function Vitrina({ inventory, costCenters }) {
       return a.name.localeCompare(b.name);
     });
 
-  const handleShare = () => {
-    const sep = '─'.repeat(28);
+  /* ── Text share ─────────────────────────────────────────── */
+  const handleShareText = () => {
+    const sep = '─'.repeat(26);
     const lines = filtered.map(item => {
       const rev    = (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
       const profit = rev - item.purchasePrice;
       const icon   = item.type==='plant' ? '🌿' : '📦';
       const status = item.type!=='plant' && item.sales?.length>0 ? ' ✓ Vendido' : '';
-      return `${icon} ${item.name}${status}\n   Costo: ${fmt(item.purchasePrice)}  Ganancia: ${fmt(profit)}`;
+      const priceStr = showPrices
+        ? `\n   Precio: ${fmt(item.purchasePrice)}  Gan: ${profit>=0?'+':''}${fmt(profit)}`
+        : '';
+      return `${icon} ${item.name}${status}${priceStr}`;
     }).join('\n');
     const text = `🌿 Bloom Aquatics\n${sep}\n${lines}\n${sep}\n${filtered.length} artículos`;
     if (navigator.share) {
-      navigator.share({ title: 'Bloom Aquatics — Vitrina', text }).catch(()=>{});
+      navigator.share({ title:'Bloom Aquatics — Catálogo', text }).catch(()=>{});
     } else {
       navigator.clipboard?.writeText(text)
-        .then(()=>alert('✓ Lista copiada. Pégala en WhatsApp, Facebook, OfferUp…'))
+        .then(()=>alert('✓ Lista copiada. Pégala en WhatsApp, OfferUp, Facebook…'))
         .catch(()=>alert(text));
     }
+  };
+
+  /* ── Image / catalog share ──────────────────────────────── */
+  const generateCatalogImage = async () => {
+    const cols   = 2;
+    const cellW  = 200;
+    const photoH = 180;
+    const infoH  = showPrices ? 52 : 34;
+    const cellH  = photoH + infoH;
+    const pad    = 10;
+    const headerH= 54;
+    const rows   = Math.ceil(filtered.length / cols);
+    const W      = cols * cellW + (cols + 1) * pad;
+    const H      = headerH + rows * (cellH + pad) + pad;
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#f9fafb';
+    ctx.fillRect(0, 0, W, H);
+
+    // Header bar
+    ctx.fillStyle = '#7c3aed';
+    ctx.fillRect(0, 0, W, headerH);
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🌿 Bloom Aquatics', W / 2, headerH / 2);
+
+    // Load image helper
+    const loadImg = src => new Promise(res => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload  = () => res(img);
+      img.onerror = () => res(null);
+      img.src = src;
+    });
+
+    // Rounded-rect path helper
+    const roundRect = (x, y, w, h, r) => {
+      ctx.beginPath();
+      ctx.moveTo(x+r, y);
+      ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y,   x+w, y+r);
+      ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+      ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x,   y+h, x,   y+h-r);
+      ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x,   y,   x+r, y);
+      ctx.closePath();
+    };
+
+    for (let i = 0; i < filtered.length; i++) {
+      const item = filtered[i];
+      const col  = i % cols;
+      const row  = Math.floor(i / cols);
+      const x    = pad + col * (cellW + pad);
+      const y    = headerH + pad + row * (cellH + pad);
+
+      // Card white background
+      ctx.fillStyle = '#ffffff';
+      roundRect(x, y, cellW, cellH, 12);
+      ctx.fill();
+
+      // Photo area (clipped)
+      ctx.save();
+      roundRect(x, y, cellW, photoH, 12);
+      ctx.clip();
+      ctx.fillStyle = '#f3f4f6';
+      ctx.fillRect(x, y, cellW, photoH);
+
+      const url = photoUrl(item.photoPath);
+      if (url) {
+        const img = await loadImg(url);
+        if (img) {
+          const aspect = img.width / img.height;
+          let sw = cellW, sh = photoH;
+          if (aspect > cellW / photoH) { sh = photoH; sw = sh * aspect; }
+          else { sw = cellW; sh = sw / aspect; }
+          ctx.drawImage(img, x + (cellW - sw) / 2, y + (photoH - sh) / 2, sw, sh);
+        }
+      }
+      // Emoji fallback if no photo or load failed
+      const hasPhoto = url && (await loadImg(url)) !== null;
+      if (!hasPhoto) {
+        ctx.font = '64px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(item.type==='plant' ? '🌿' : '📦', x + cellW/2, y + photoH/2);
+      }
+      ctx.restore();
+
+      // Name
+      const name = item.name.length > 22 ? item.name.slice(0,21) + '…' : item.name;
+      ctx.fillStyle = '#111827';
+      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(name, x + cellW/2, y + photoH + 18);
+
+      // Price line (only if showPrices)
+      if (showPrices) {
+        const rev    = (item.sales||[]).reduce((s,v)=>s+v.salePrice, 0);
+        const profit = rev - item.purchasePrice;
+        ctx.fillStyle = profit >= 0 ? '#16a34a' : '#dc2626';
+        ctx.font = '12px system-ui, -apple-system, sans-serif';
+        ctx.fillText(
+          `Gan: ${profit>=0?'+':''}$${profit.toFixed(2)}`,
+          x + cellW/2, y + photoH + 36
+        );
+      }
+
+      // Sold / harvest badge
+      const sold     = item.type!=='plant' && item.sales?.length>0;
+      const harvests = item.type==='plant'  ? item.sales?.length||0 : 0;
+      if (sold || harvests>0) {
+        const badgeLabel = sold ? '✓ Vendido' : `${harvests} cosecha${harvests>1?'s':''}`;
+        ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
+        const bw = ctx.measureText(badgeLabel).width + 14;
+        const bh = 20;
+        const bx = x + cellW - bw - 6;
+        const by = y + 6;
+        ctx.fillStyle = sold ? '#16a34a' : '#7c3aed';
+        roundRect(bx, by, bw, bh, 10);
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeLabel, bx + bw/2, by + bh/2);
+      }
+    }
+
+    return canvas;
+  };
+
+  const handleShareImage = async () => {
+    setGen(true);
+    try {
+      const canvas = await generateCatalogImage();
+      canvas.toBlob(async blob => {
+        const file = new File([blob], 'bloom-aquatics.png', { type:'image/png' });
+        try {
+          if (navigator.share && navigator.canShare?.({ files:[file] })) {
+            await navigator.share({ title:'Bloom Aquatics — Catálogo', files:[file] });
+          } else {
+            // Desktop fallback: download the image
+            const url = URL.createObjectURL(blob);
+            const a   = document.createElement('a');
+            a.href     = url;
+            a.download = 'bloom-aquatics-catalogo.png';
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch(e) { console.error(e); }
+        setGen(false);
+      }, 'image/png');
+    } catch(e) { console.error(e); setGen(false); }
   };
 
   const vBtn = active => ({
@@ -622,7 +786,6 @@ function Vitrina({ inventory, costCenters }) {
     const sold     = item.type!=='plant' && item.sales?.length>0;
     const harvests = item.type==='plant' ? item.sales?.length||0 : 0;
 
-    /* ── LIST row ── */
     if (viewMode==='list') return (
       <div key={item.id} onClick={()=>setDetail(item)}
         style={{display:'flex',alignItems:'center',gap:12,padding:'11px 16px',
@@ -633,19 +796,20 @@ function Vitrina({ inventory, costCenters }) {
             textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
           <div style={{fontSize:11,color:cc?.color,fontWeight:600}}>
             {cc?.name}
-            {sold     && <span style={{color:'#16a34a'}}> · ✓ Vendido</span>}
+            {sold      && <span style={{color:'#16a34a'}}> · ✓ Vendido</span>}
             {harvests>0 && <span style={{color:'#7c3aed'}}> · {harvests} cosecha{harvests>1?'s':''}</span>}
           </div>
         </div>
         <div style={{textAlign:'right',flexShrink:0}}>
-          <div style={{fontSize:14,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
-            {profit>=0?'+':''}{fmt(profit)}</div>
-          <div style={{fontSize:11,color:'#9ca3af'}}>{fmt(item.purchasePrice)} costo</div>
+          {showPrices && <>
+            <div style={{fontSize:14,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
+              {profit>=0?'+':''}{fmt(profit)}</div>
+            <div style={{fontSize:11,color:'#9ca3af'}}>{fmt(item.purchasePrice)} costo</div>
+          </>}
         </div>
       </div>
     );
 
-    /* ── DETAIL card ── */
     if (viewMode==='detail') return (
       <div key={item.id} style={{...S.card,margin:'0 12px 12px'}}>
         <div style={{display:'flex',gap:12,marginBottom:8}}>
@@ -656,16 +820,19 @@ function Vitrina({ inventory, costCenters }) {
             <div style={{fontSize:15,fontWeight:700,color:'#111827',overflow:'hidden',
               textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
             <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:6}}>{cc?.name}</div>
-            <div style={{display:'flex',gap:6}}>
-              {[['Costo',fmt(item.purchasePrice),'#6b7280'],
-                ['Ventas',fmt(totalRev),'#16a34a'],
-                ['Ganancia',fmt(profit),profit>=0?'#1d4ed8':'#dc2626']].map(([l,v,c])=>(
-                <div key={l} style={{flex:1,background:'#f9fafb',borderRadius:8,padding:'6px 4px',textAlign:'center'}}>
-                  <div style={{fontSize:9,color:'#9ca3af',fontWeight:700,textTransform:'uppercase'}}>{l}</div>
-                  <div style={{fontSize:12,fontWeight:700,color:c,marginTop:2}}>{v}</div>
-                </div>
-              ))}
-            </div>
+            {showPrices && (
+              <div style={{display:'flex',gap:6}}>
+                {[['Costo',fmt(item.purchasePrice),'#6b7280'],
+                  ['Ventas',fmt(totalRev),'#16a34a'],
+                  ['Ganancia',fmt(profit),profit>=0?'#1d4ed8':'#dc2626']].map(([l,v,c])=>(
+                  <div key={l} style={{flex:1,background:'#f9fafb',borderRadius:8,
+                    padding:'6px 4px',textAlign:'center'}}>
+                    <div style={{fontSize:9,color:'#9ca3af',fontWeight:700,textTransform:'uppercase'}}>{l}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:c,marginTop:2}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         {item.notes&&<div style={{fontSize:12,color:'#6b7280',fontStyle:'italic',
@@ -673,7 +840,7 @@ function Vitrina({ inventory, costCenters }) {
       </div>
     );
 
-    /* ── GRID card (default) ── */
+    // grid
     return (
       <div key={item.id} onClick={()=>setDetail(item)}
         style={{background:'#fff',borderRadius:14,overflow:'hidden',cursor:'pointer',
@@ -700,12 +867,15 @@ function Vitrina({ inventory, costCenters }) {
         <div style={{padding:'10px 10px 12px'}}>
           <div style={{fontSize:13,fontWeight:700,color:'#111827',overflow:'hidden',
             textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{item.name}</div>
-          <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:4}}>{cc?.name}</div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontSize:11,color:'#9ca3af'}}>{daysSince(item.purchaseDate)}d</span>
-            <span style={{fontSize:13,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
-              {profit>=0?'+':''}{fmt(profit)}</span>
-          </div>
+          <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:showPrices?4:0}}>
+            {cc?.name}</div>
+          {showPrices && (
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:11,color:'#9ca3af'}}>{daysSince(item.purchaseDate)}d</span>
+              <span style={{fontSize:13,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
+                {profit>=0?'+':''}{fmt(profit)}</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -714,31 +884,56 @@ function Vitrina({ inventory, costCenters }) {
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
 
-      {/* ── Toolbar ── */}
+      {/* Toolbar */}
       <div style={{padding:'10px 12px',borderBottom:'1px solid #e5e7eb',
         background:'#fafafa',flexShrink:0}}>
 
+        {/* Row 1: view toggles + search + share buttons */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-          {/* View mode */}
-          <button style={vBtn(viewMode==='grid')}   title="Vista cuadrícula" onClick={()=>setViewMode('grid')}>⊞</button>
-          <button style={vBtn(viewMode==='list')}   title="Vista lista"      onClick={()=>setViewMode('list')}>☰</button>
-          <button style={vBtn(viewMode==='detail')} title="Vista detalle"    onClick={()=>setViewMode('detail')}>≡</button>
+          <button style={vBtn(viewMode==='grid')}   title="Cuadrícula" onClick={()=>setViewMode('grid')}>⊞</button>
+          <button style={vBtn(viewMode==='list')}   title="Lista"      onClick={()=>setViewMode('list')}>☰</button>
+          <button style={vBtn(viewMode==='detail')} title="Detalle"    onClick={()=>setViewMode('detail')}>≡</button>
 
-          {/* Search */}
           <input value={search} onChange={e=>setSearch(e.target.value)}
             placeholder="🔍 Buscar…"
             style={{...S.input,flex:1,marginBottom:0,minHeight:40,padding:'8px 12px',fontSize:14}}/>
 
-          {/* Share */}
-          <button onClick={handleShare} title="Compartir lista"
-            style={{background:'#7c3aed',border:'none',borderRadius:10,padding:'8px 12px',
-              cursor:'pointer',color:'white',fontSize:15,fontWeight:700,
-              minHeight:40,minWidth:40,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            📤
+          {/* Text share */}
+          <button onClick={handleShareText} title="Compartir como texto"
+            style={{background:'#7c3aed',border:'none',borderRadius:10,
+              padding:'8px 10px',cursor:'pointer',color:'white',fontSize:14,fontWeight:700,
+              minHeight:40,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',
+              gap:4}}>
+            📋
+          </button>
+
+          {/* Image share */}
+          <button onClick={handleShareImage} disabled={generating}
+            title="Compartir como imagen con fotos"
+            style={{background:generating?'#9ca3af':'#16a34a',border:'none',borderRadius:10,
+              padding:'8px 10px',cursor:generating?'wait':'pointer',color:'white',fontSize:14,
+              fontWeight:700,minHeight:40,flexShrink:0,
+              display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+            {generating ? '⏳' : '🖼️'}
           </button>
         </div>
 
-        {/* Collapsible filter row */}
+        {/* Row 2: "Mostrar precios" always visible — most important toggle */}
+        <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,
+          padding:'8px 12px',background:'#fffbeb',borderRadius:8,
+          border:'1px solid #f59e0b',cursor:'pointer',userSelect:'none'}}>
+          <input type="checkbox" checked={showPrices}
+            onChange={e=>setShowPr(e.target.checked)}
+            style={{width:18,height:18,accentColor:'#f59e0b',cursor:'pointer',flexShrink:0}}/>
+          <span style={{fontSize:13,color:'#92400e',fontWeight:600}}>
+            💰 Mostrar precios y ganancias
+          </span>
+          <span style={{fontSize:11,color:'#b45309',marginLeft:'auto'}}>
+            {showPrices ? 'VISIBLE' : 'oculto para clientes'}
+          </span>
+        </label>
+
+        {/* Row 3: collapsible filters */}
         <button onClick={()=>setFO(o=>!o)}
           style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
             background:'none',border:'none',cursor:'pointer',padding:'4px 0',
@@ -753,12 +948,10 @@ function Vitrina({ inventory, costCenters }) {
         {filterOpen && (
           <div style={{paddingTop:10,display:'flex',flexDirection:'column',gap:10,
             borderTop:'1px solid #e5e7eb',marginTop:6}}>
-
-            {/* Checkboxes */}
             <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
               {[
-                [showProducts, setShowP,  '📦 Artículos'],
-                [showPlants,   setShowPl, '🌿 Plantas'],
+                [showProducts, setShowP,   '📦 Artículos'],
+                [showPlants,   setShowPl,  '🌿 Plantas'],
                 [showSold,     setShowSold,'✓ Vendidos'],
               ].map(([checked,setter,label],i)=>(
                 <label key={i} style={{display:'flex',alignItems:'center',gap:6,
@@ -770,8 +963,6 @@ function Vitrina({ inventory, costCenters }) {
                 </label>
               ))}
             </div>
-
-            {/* Person filter + sort */}
             <div style={{display:'flex',gap:8}}>
               <select value={fCC} onChange={e=>setFCC(e.target.value)}
                 style={{...S.input,flex:1,marginBottom:0,minHeight:40,padding:'8px 10px',fontSize:13}}>
@@ -790,7 +981,7 @@ function Vitrina({ inventory, costCenters }) {
         )}
       </div>
 
-      {/* ── Items area ── */}
+      {/* Items */}
       <div style={{flex:1,overflowY:'auto'}}>
         {filtered.length===0 ? (
           <div style={{textAlign:'center',padding:'52px 16px',color:'#9ca3af'}}>
