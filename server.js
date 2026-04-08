@@ -79,6 +79,14 @@ try {
   // column already exists — no action needed
 }
 
+// ── Safe migration: add selling_price column ───────────────
+try {
+  db.exec('ALTER TABLE inventory ADD COLUMN selling_price REAL');
+  console.log('[DB] Migration OK: selling_price column added.');
+} catch {
+  // column already exists — no action needed
+}
+
 // ── Seed default cost centers if brand new ────────────────
 const ccCount = db.prepare('SELECT COUNT(*) AS c FROM cost_centers').get().c;
 if (ccCount === 0) {
@@ -191,6 +199,7 @@ app.get('/api/inventory', (_req, res) => {
     ccId: i.cc_id, qty: i.qty, unit: i.unit,
     notes: i.notes, status: i.status,
     photoPath: i.photo_path || null,
+    sellingPrice: i.selling_price ?? null,
     sales: sales.filter(s => s.inventory_id === i.id).map(s => ({
       id: s.id, saleDate: s.sale_date, salePrice: s.sale_price,
       platform: s.platform, payment: s.payment, notes: s.notes,
@@ -199,18 +208,18 @@ app.get('/api/inventory', (_req, res) => {
 });
 
 app.post('/api/inventory', (req, res) => {
-  const { id, type, name, purchaseDate, purchasePrice, ccId, qty, unit, notes } = req.body;
+  const { id, type, name, purchaseDate, purchasePrice, sellingPrice, ccId, qty, unit, notes } = req.body;
   db.prepare(`INSERT INTO inventory
-    (id,type,name,purchase_date,purchase_price,cc_id,qty,unit,notes)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(id, type, name, purchaseDate, purchasePrice, ccId, qty||1, unit||'unidad', notes||null);
+    (id,type,name,purchase_date,purchase_price,selling_price,cc_id,qty,unit,notes)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, type, name, purchaseDate, purchasePrice, sellingPrice??null, ccId, qty||1, unit||'unidad', notes||null);
   res.json({ ok: true });
 });
 
 app.patch('/api/inventory/:id', (req, res) => {
-  const { type, name, purchaseDate, purchasePrice, ccId, qty, unit, notes } = req.body;
-  db.prepare(`UPDATE inventory SET type=?,name=?,purchase_date=?,purchase_price=?,cc_id=?,qty=?,unit=?,notes=? WHERE id=?`)
-    .run(type, name, purchaseDate, purchasePrice, ccId, qty||1, unit||'unidad', notes||null, req.params.id);
+  const { type, name, purchaseDate, purchasePrice, sellingPrice, ccId, qty, unit, notes } = req.body;
+  db.prepare(`UPDATE inventory SET type=?,name=?,purchase_date=?,purchase_price=?,selling_price=?,cc_id=?,qty=?,unit=?,notes=? WHERE id=?`)
+    .run(type, name, purchaseDate, purchasePrice, sellingPrice??null, ccId, qty||1, unit||'unidad', notes||null, req.params.id);
   res.json({ ok: true });
 });
 

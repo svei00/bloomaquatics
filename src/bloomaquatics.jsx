@@ -245,93 +245,102 @@ function TxnModal({ costCenters, inventory, onSave, onClose }) {
 }
 
 /* ── INVENTORY MODAL ─────────────────────────────────────── */
+
+/* ── INVENTORY ADD MODAL ─────────────────────────────────── */
 function InvModal({ costCenters, onSave, onClose }) {
-  const [type,setType]     = useState('product');
-  const [name,setName]     = useState('');
-  const [pDate,setPDate]   = useState(today());
-  const [pPrice,setPPrice] = useState('');
-  const [ccId,setCcId]     = useState(costCenters[0]?.id||'');
-  const [qty,setQty]       = useState('1');
-  const [unit,setUnit]     = useState('unidad');
-  const [notes,setNotes]   = useState('');
-  // Photo is uploaded AFTER item is saved (we need the id first)
-  const [savedId,setSavedId]     = useState(null);
-  const [photoPath,setPhotoPath] = useState(null);
-  const [step,setStep]           = useState('form'); // 'form' | 'photo'
-
-  const handleSave = () => {
-    if(!name.trim()) return;
-    const id = uid();
-    onSave({ id, type, name:name.trim(), purchaseDate:pDate,
-      purchasePrice:parseFloat(pPrice||0), ccId, qty:parseFloat(qty||1), unit, notes, sales:[] });
-    // Move to optional photo step
-    setSavedId(id);
-    setStep('photo');
-  };
-
-  if (step==='photo') return (
-    <Modal title="Foto del artículo (opcional)" onClose={onClose}>
-      <div style={{ textAlign:'center', marginBottom:18 }}>
-        <div style={{ fontSize:48, marginBottom:8 }}>{type==='plant'?'🌿':type==='supply'?'🧪':'📦'}</div>
-        <div style={{ fontWeight:700, fontSize:17, color:'#111827' }}>{name}</div>
-        <div style={{ fontSize:13, color:'#6b7280', marginTop:4 }}>
-          Artículo guardado. Ahora puedes agregar una foto o terminar.
-        </div>
-      </div>
-      <PhotoUpload itemId={savedId} currentPath={photoPath}
-        onUploaded={p => { setPhotoPath(p); onClose(); }}/>
-      <button style={{...S.btn('#6b7280'), marginTop:16}} onClick={onClose}>
-        Terminar sin foto
-      </button>
-    </Modal>
-  );
+  const SUPPLY_UNITS = ['unidad','botella','bolsa','galón','litro','kg','g','ml'];
+  const [type,setType]           = useState('product');
+  const [name,setName]           = useState('');
+  const [pDate,setPDate]         = useState(today());
+  const [pPrice,setPPrice]       = useState('');
+  const [sellPrice,setSellPrice] = useState('');
+  const [ccId,setCcId]           = useState(costCenters[0]?.id||'');
+  const [qty,setQty]             = useState('1');
+  const [unit,setUnit]           = useState('unidad');
+  const [notes,setNotes]         = useState('');
 
   return (
     <Modal title="Agregar al Inventario" onClose={onClose}>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:18}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
         {[['product','📦','Artículo','Para reventa'],
           ['plant',  '🌿','Planta',  'Multi-cosecha'],
           ['supply', '🧪','Insumo',  'Vitaminas, CO2…']].map(([t,ic,lb,sub])=>(
           <button key={t} onClick={()=>setType(t)} style={{
-            padding:'11px 4px', borderRadius:12, textAlign:'center', cursor:'pointer', lineHeight:1.4,
+            padding:'10px 4px',borderRadius:10,textAlign:'center',cursor:'pointer',
             border:`2px solid ${type===t?'#7c3aed':'#e5e7eb'}`,
-            background: type===t?'#f5f3ff':'#fafafa', color: type===t?'#7c3aed':'#6b7280' }}>
-            <div style={{fontSize:22,marginBottom:4}}>{ic}</div>
-            <div style={{fontSize:12,fontWeight:700,color:type===t?'#7c3aed':'#374151'}}>{lb}</div>
-            <div style={{fontSize:10,marginTop:2,color:'#9ca3af'}}>{sub}</div>
+            background:type===t?'#f5f3ff':'#fafafa',
+            color:type===t?'#7c3aed':'#6b7280',lineHeight:1.4}}>
+            <div style={{fontSize:20,marginBottom:2}}>{ic}</div>
+            <div style={{fontSize:11,fontWeight:700,color:type===t?'#7c3aed':'#374151'}}>{lb}</div>
+            <div style={{fontSize:9,marginTop:1,color:'#9ca3af'}}>{sub}</div>
           </button>
         ))}
       </div>
+
       <label style={S.label}>Nombre *</label>
       <input value={name} onChange={e=>setName(e.target.value)}
         placeholder={type==='plant'?'Ej: Anubias roja…':type==='supply'?'Ej: Seachem Flourish…':'Ej: Stroller Britax…'}
         style={S.input}/>
+
       <label style={S.label}>Fecha de Compra</label>
       <input type="date" value={pDate} onChange={e=>setPDate(e.target.value)} style={S.input}/>
-      <div style={{display:'grid',gridTemplateColumns:type==='supply'?'1fr 70px 100px':'1fr',gap:10}}>
-        <div>
-          <label style={S.label}>Precio ($)</label>
-          <input type="number" step="0.01" min="0" placeholder="0.00"
-            value={pPrice} onChange={e=>setPPrice(e.target.value)} style={{...S.input,marginBottom:0}}/>
+
+      {/* Price row: cost + sell price side by side for non-supply */}
+      {type!=='supply' ? (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <div>
+            <label style={S.label}>Precio Costo ($)</label>
+            <input type="number" step="0.01" min="0" placeholder="0.00"
+              value={pPrice} onChange={e=>setPPrice(e.target.value)}
+              style={{...S.input,marginBottom:0}}/>
+          </div>
+          <div>
+            <label style={{...S.label,color:'#16a34a'}}>Precio Venta ($)</label>
+            <input type="number" step="0.01" min="0" placeholder="0.00"
+              value={sellPrice} onChange={e=>setSellPrice(e.target.value)}
+              style={{...S.input,marginBottom:0,borderColor:'#86efac'}}/>
+          </div>
         </div>
-        {type==='supply' && (<>
-          <div><label style={S.label}>Cant.</label>
-            <input type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} style={{...S.input,marginBottom:0}}/></div>
-          <div><label style={S.label}>Unidad</label>
+      ) : (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 70px 110px',gap:8}}>
+          <div>
+            <label style={S.label}>Precio ($)</label>
+            <input type="number" step="0.01" min="0" placeholder="0.00"
+              value={pPrice} onChange={e=>setPPrice(e.target.value)}
+              style={{...S.input,marginBottom:0}}/>
+          </div>
+          <div>
+            <label style={S.label}>Cant.</label>
+            <input type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}
+              style={{...S.input,marginBottom:0}}/>
+          </div>
+          <div>
+            <label style={S.label}>Unidad</label>
             <select value={unit} onChange={e=>setUnit(e.target.value)} style={{...S.input,marginBottom:0}}>
               {SUPPLY_UNITS.map(u=><option key={u}>{u}</option>)}
-            </select></div>
-        </>)}
-      </div>
+            </select>
+          </div>
+        </div>
+      )}
       <div style={{height:12}}/>
+
       <label style={S.label}>Centro de Costo</label>
       <select value={ccId} onChange={e=>setCcId(e.target.value)} style={S.input}>
         {costCenters.map(cc=><option key={cc.id} value={cc.id}>{cc.name}</option>)}
       </select>
+
       <label style={S.label}>Notas</label>
       <textarea value={notes} onChange={e=>setNotes(e.target.value)}
-        style={{...S.input,height:56,resize:'vertical'}} placeholder="Opcional…"/>
-      <button style={S.btn()} onClick={handleSave}>Guardar y agregar foto →</button>
+        style={{...S.input,height:54,resize:'vertical'}} placeholder="Opcional…"/>
+
+      <button style={S.btn()} onClick={()=>{
+        if(!name.trim()) return;
+        onSave({id:uid(),type,name:name.trim(),purchaseDate:pDate,
+          purchasePrice:parseFloat(pPrice||0),
+          sellingPrice:sellPrice!==''?parseFloat(sellPrice):null,
+          ccId,qty:parseFloat(qty||1),unit,notes,sales:[]});
+        onClose();
+      }}>Guardar</button>
     </Modal>
   );
 }
@@ -339,7 +348,7 @@ function InvModal({ costCenters, onSave, onClose }) {
 /* ── SALE MODAL ──────────────────────────────────────────── */
 function SaleModal({ item, onSave, onClose }) {
   const [saleDate,setSaleDate] = useState(today());
-  const [salePrice,setSP]      = useState('');
+  const [salePrice,setSP]      = useState(item.sellingPrice!=null ? String(item.sellingPrice) : '');
   const [platform,setPlatform] = useState('OfferUp');
   const [payment,setPay]       = useState('Efectivo');
   const [notes,setNotes]       = useState('');
@@ -348,27 +357,26 @@ function SaleModal({ item, onSave, onClose }) {
 
   return (
     <Modal title={isPlant?'🌿 Registrar Cosecha':'💰 Marcar Vendido'} onClose={onClose}>
-      <div style={{background:'#f5f3ff',borderRadius:12,padding:'12px 16px',marginBottom:18,border:'1px solid #ddd6fe',display:'flex',gap:12,alignItems:'center'}}>
-        <PhotoThumb photoPath={item.photoPath} type={item.type} size={52}/>
-        <div>
-          <div style={{fontWeight:700,fontSize:15,color:'#4c1d95'}}>{item.name}</div>
-          <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>
-            Comprado {item.purchaseDate} · {fmt(item.purchasePrice)}
-            {isPlant&&item.sales?.length>0&&<span style={{color:'#16a34a'}}> · {item.sales.length} cosecha(s) · {fmt(prevRev)} recibido</span>}
-          </div>
+      <div style={{background:'#f5f3ff',borderRadius:12,padding:'12px 16px',marginBottom:18,border:'1px solid #ddd6fe'}}>
+        <div style={{fontWeight:700,fontSize:15,color:'#4c1d95'}}>{item.name}</div>
+        <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>
+          Comprado {item.purchaseDate} · Costo: {fmt(item.purchasePrice)}
+          {item.sellingPrice!=null && <span style={{color:'#16a34a'}}> · Precio venta: {fmt(item.sellingPrice)}</span>}
+          {isPlant&&item.sales?.length>0&&<span style={{color:'#16a34a'}}> · {item.sales.length} cosecha(s) · {fmt(prevRev)} recibido</span>}
         </div>
       </div>
+
       <label style={S.label}>Fecha de Venta</label>
       <input type="date" value={saleDate} onChange={e=>setSaleDate(e.target.value)} style={S.input}/>
       <label style={S.label}>Precio de Venta ($) *</label>
       <input type="number" step="0.01" min="0" placeholder="0.00" value={salePrice} onChange={e=>setSP(e.target.value)} style={S.input}/>
       <label style={S.label}>Plataforma</label>
       <select value={platform} onChange={e=>setPlatform(e.target.value)} style={S.input}>
-        {PLATFORMS.map(p=><option key={p}>{p}</option>)}
+        {['OfferUp','Facebook Marketplace','eBay','En persona','Otro'].map(p=><option key={p}>{p}</option>)}
       </select>
       <label style={S.label}>Método de Pago</label>
       <select value={payment} onChange={e=>setPay(e.target.value)} style={S.input}>
-        {PAYMENTS.map(p=><option key={p}>{p}</option>)}
+        {['Efectivo','Zelle','Venmo','PayPal','Otro'].map(p=><option key={p}>{p}</option>)}
       </select>
       <label style={S.label}>Notas</label>
       <textarea value={notes} onChange={e=>setNotes(e.target.value)}
@@ -382,119 +390,24 @@ function SaleModal({ item, onSave, onClose }) {
   );
 }
 
-/* ── ITEM DETAIL MODAL (Vitrina) ─────────────────────────── */
-function DetailModal({ item, costCenters, onClose }) {
-  const cc = costCenters.find(c=>c.id===item.ccId);
-  const totalRev = (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
-  const profit   = totalRev - item.purchasePrice;
-  const url      = photoUrl(item.photoPath);
-
-  return (
-    <Modal title="" onClose={onClose}>
-      {/* Photo */}
-      <div style={{ width:'100%', paddingTop:'65%', position:'relative', borderRadius:14,
-        overflow:'hidden', background:'#f3f4f6', marginBottom:16 }}>
-        {url
-          ? <img src={url} alt={item.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}/>
-          : <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:72 }}>
-              {item.type==='plant'?'🌿':item.type==='supply'?'🧪':'📦'}
-            </div>}
-      </div>
-
-      <div style={{ fontWeight:800, fontSize:20, color:'#111827', marginBottom:4 }}>{item.name}</div>
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
-        <span style={{ fontSize:12, fontWeight:600, color:cc?.color, background:cc?.color+'18',
-          padding:'4px 10px', borderRadius:20 }}>{cc?.name}</span>
-        <span style={{ fontSize:12, color:'#6b7280' }}>
-          {item.type==='plant'?'🌿 Planta':item.type==='supply'?'🧪 Insumo':'📦 Artículo'}
-        </span>
-        <span style={{ fontSize:12, color:'#9ca3af', marginLeft:'auto' }}>
-          {daysSince(item.purchaseDate)}d en stock
-        </span>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:16 }}>
-        {[['Costo',fmt(item.purchasePrice),'#6b7280'],
-          ['Ingresos',fmt(totalRev),'#16a34a'],
-          ['Ganancia',fmt(profit),profit>=0?'#1d4ed8':'#dc2626']].map(([l,v,c])=>(
-          <div key={l} style={{ background:'#f9fafb', borderRadius:10, padding:'10px 6px', textAlign:'center' }}>
-            <div style={{ fontSize:10, color:'#9ca3af', fontWeight:700, textTransform:'uppercase' }}>{l}</div>
-            <div style={{ fontSize:14, fontWeight:700, color:c, marginTop:3 }}>{v}</div>
-          </div>
-        ))}
-      </div>
-
-      {item.notes && <div style={{ background:'#f9fafb', borderRadius:10, padding:'10px 14px',
-        fontSize:13, color:'#374151', marginBottom:16, fontStyle:'italic' }}>{item.notes}</div>}
-
-      {item.type==='plant' && item.sales?.length>0 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:'#6b7280', marginBottom:8 }}>Historial de cosechas</div>
-          {item.sales.map((s,i)=>(
-            <div key={s.id} style={{ display:'flex', justifyContent:'space-between', fontSize:13, color:'#374151',
-              padding:'6px 0', borderBottom:'1px solid #f3f4f6' }}>
-              <span>#{i+1} · {s.saleDate} · {s.platform}</span>
-              <span style={{ color:'#16a34a', fontWeight:700 }}>{fmt(s.salePrice)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <button style={S.btn('#6b7280')} onClick={onClose}>Cerrar</button>
-    </Modal>
-  );
-}
-
-/* ── BAR CHART ───────────────────────────────────────────── */
-function BarChart({ data }) {
-  const maxVal = Math.max(...data.map(d=>Math.max(d.income,d.expense)),1);
-  const H=80, GW=22, BW=8, GAP=2;
-  const totalW = data.length*(GW+4);
-  return (
-    <div style={{overflowX:'auto',marginBottom:18}}>
-      <svg width={Math.max(totalW,300)} height={H+26} style={{display:'block',minWidth:'100%'}}>
-        <line x1={0} y1={H} x2={totalW} y2={H} stroke="#e5e7eb" strokeWidth={1}/>
-        {data.map((d,i)=>{
-          const x=i*(GW+4), iH=(d.income/maxVal)*H, eH=(d.expense/maxVal)*H;
-          return (
-            <g key={i}>
-              {iH>0&&<rect x={x} y={H-iH} width={BW} height={iH} fill="#16a34a" rx={2}/>}
-              {eH>0&&<rect x={x+BW+GAP} y={H-eH} width={BW} height={eH} fill="#dc2626" rx={2}/>}
-              <text x={x+GW/2} y={H+16} textAnchor="middle" fontSize={8} fill="#9ca3af">{d.label}</text>
-            </g>
-          );
-        })}
-      </svg>
-      <div style={{display:'flex',gap:16,justifyContent:'center',marginTop:4}}>
-        {[['#16a34a','Ingresos'],['#dc2626','Gastos']].map(([c,l])=>(
-          <div key={l} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'#6b7280'}}>
-            <div style={{width:10,height:10,borderRadius:2,background:c}}/>{l}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── VITRINA ─────────────────────────────────────────────── */
-
 /* ── EDIT INVENTORY MODAL ────────────────────────────────── */
 function EditInvModal({ item, costCenters, onSave, onClose }) {
   const SUPPLY_UNITS = ['unidad','botella','bolsa','galón','litro','kg','g','ml'];
-  const [type,setType]     = useState(item.type);
-  const [name,setName]     = useState(item.name);
-  const [pDate,setPDate]   = useState(item.purchaseDate);
-  const [pPrice,setPPrice] = useState(String(item.purchasePrice));
-  const [ccId,setCcId]     = useState(item.ccId);
-  const [qty,setQty]       = useState(String(item.qty||1));
-  const [unit,setUnit]     = useState(item.unit||'unidad');
-  const [notes,setNotes]   = useState(item.notes||'');
+  const [type,setType]           = useState(item.type);
+  const [name,setName]           = useState(item.name);
+  const [pDate,setPDate]         = useState(item.purchaseDate);
+  const [pPrice,setPPrice]       = useState(String(item.purchasePrice));
+  const [sellPrice,setSellPrice] = useState(item.sellingPrice!=null ? String(item.sellingPrice) : '');
+  const [ccId,setCcId]           = useState(item.ccId);
+  const [qty,setQty]             = useState(String(item.qty||1));
+  const [unit,setUnit]           = useState(item.unit||'unidad');
+  const [notes,setNotes]         = useState(item.notes||'');
 
   return (
-    <Modal title={`✏️ Editar artículo`} onClose={onClose}>
+    <Modal title="✏️ Editar artículo" onClose={onClose}>
       <div style={{background:'#fffbeb',border:'1px solid #f59e0b',borderRadius:10,
-        padding:'10px 14px',marginBottom:16,fontSize:12,color:'#92400e'}}>
-        ⚠️ Puedes corregir tipo, nombre, fecha y precio. Las cosechas/ventas no se afectan.
+        padding:'10px 14px',marginBottom:14,fontSize:12,color:'#92400e'}}>
+        ⚠️ Puedes corregir tipo, nombre, fechas y precios. Las cosechas/ventas no se afectan.
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
@@ -504,7 +417,7 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
             border:`2px solid ${type===t?'#7c3aed':'#e5e7eb'}`,
             background:type===t?'#f5f3ff':'#fafafa',
             color:type===t?'#7c3aed':'#6b7280'}}>
-            <div style={{fontSize:22,marginBottom:2}}>{ic}</div>
+            <div style={{fontSize:20,marginBottom:2}}>{ic}</div>
             <div style={{fontSize:11,fontWeight:700}}>{lb}</div>
           </button>
         ))}
@@ -516,13 +429,27 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
       <label style={S.label}>Fecha de Compra</label>
       <input type="date" value={pDate} onChange={e=>setPDate(e.target.value)} style={S.input}/>
 
-      <div style={{display:'grid',gridTemplateColumns:type==='supply'?'1fr 70px 110px':'1fr',gap:8}}>
-        <div>
-          <label style={S.label}>Precio ($)</label>
-          <input type="number" step="0.01" min="0" value={pPrice}
-            onChange={e=>setPPrice(e.target.value)} style={{...S.input,marginBottom:0}}/>
+      {type!=='supply' ? (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <div>
+            <label style={S.label}>Precio Costo ($)</label>
+            <input type="number" step="0.01" min="0" value={pPrice}
+              onChange={e=>setPPrice(e.target.value)} style={{...S.input,marginBottom:0}}/>
+          </div>
+          <div>
+            <label style={{...S.label,color:'#16a34a'}}>Precio Venta ($)</label>
+            <input type="number" step="0.01" min="0" placeholder="sin definir"
+              value={sellPrice} onChange={e=>setSellPrice(e.target.value)}
+              style={{...S.input,marginBottom:0,borderColor:'#86efac'}}/>
+          </div>
         </div>
-        {type==='supply' && (<>
+      ) : (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 70px 110px',gap:8}}>
+          <div>
+            <label style={S.label}>Precio ($)</label>
+            <input type="number" step="0.01" min="0" value={pPrice}
+              onChange={e=>setPPrice(e.target.value)} style={{...S.input,marginBottom:0}}/>
+          </div>
           <div><label style={S.label}>Cant.</label>
             <input type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}
               style={{...S.input,marginBottom:0}}/></div>
@@ -530,8 +457,8 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
             <select value={unit} onChange={e=>setUnit(e.target.value)} style={{...S.input,marginBottom:0}}>
               {SUPPLY_UNITS.map(u=><option key={u}>{u}</option>)}
             </select></div>
-        </>)}
-      </div>
+        </div>
+      )}
       <div style={{height:12}}/>
 
       <label style={S.label}>Centro de Costo</label>
@@ -541,7 +468,7 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
 
       <label style={S.label}>Notas</label>
       <textarea value={notes} onChange={e=>setNotes(e.target.value)}
-        style={{...S.input,height:56,resize:'vertical'}} placeholder="Opcional…"/>
+        style={{...S.input,height:54,resize:'vertical'}} placeholder="Opcional…"/>
 
       <div style={{display:'flex',gap:10}}>
         <button onClick={onClose} style={{flex:1,padding:'14px',borderRadius:12,
@@ -550,7 +477,9 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
         <button onClick={()=>{
           if(!name.trim()) return;
           onSave(item.id,{type,name:name.trim(),purchaseDate:pDate,
-            purchasePrice:parseFloat(pPrice||0),ccId,qty:parseFloat(qty||1),unit,notes});
+            purchasePrice:parseFloat(pPrice||0),
+            sellingPrice:sellPrice!==''?parseFloat(sellPrice):null,
+            ccId,qty:parseFloat(qty||1),unit,notes});
           onClose();
         }} style={{flex:2,padding:'14px',borderRadius:12,background:'#7c3aed',
           color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer',minHeight:50}}>
@@ -560,30 +489,32 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
   );
 }
 
+
 /* ── VITRINA ─────────────────────────────────────────────── */
 function Vitrina({ inventory, costCenters }) {
-  const [viewMode,setViewMode] = useState('grid');
-  const [search,setSearch]     = useState('');
-  const [showProducts,setShowP]= useState(true);
-  const [showPlants,setShowPl] = useState(true);
-  const [showSold,setShowSold] = useState(true);
-  const [showPrices,setShowPr] = useState(false);   // OFF by default — clients dont need to see costs
-  const [fCC,setFCC]           = useState('all');
-  const [sortBy,setSortBy]     = useState('name');
-  const [filterOpen,setFO]     = useState(false);
-  const [detail,setDetail]     = useState(null);
-  const [generating,setGen]    = useState(false);
+  const [viewMode,setViewMode]   = useState('grid');
+  const [search,setSearch]       = useState('');
+  const [showProducts,setShowP]  = useState(true);
+  const [showPlants,setShowPl]   = useState(true);
+  const [showSold,setShowSold]   = useState(true);
+  const [showCosts,setShowCosts] = useState(false);   // internal: cost + profit
+  const [showSellPr,setShowSP]   = useState(false);   // client: selling price
+  const [fCC,setFCC]             = useState('all');
+  const [sortBy,setSortBy]       = useState('name');
+  const [filterOpen,setFO]       = useState(false);
+  const [detail,setDetail]       = useState(null);
+  const [generating,setGen]      = useState(false);
 
   const filtered = inventory
     .filter(i => i.type !== 'supply')
-    .filter(i => (i.type==='product' && showProducts) || (i.type==='plant' && showPlants))
+    .filter(i => (i.type==='product' && showProducts)||(i.type==='plant' && showPlants))
     .filter(i => fCC==='all' || i.ccId===fCC)
     .filter(i => !search || i.name.toLowerCase().includes(search.toLowerCase()))
     .filter(i => showSold || !(i.type!=='plant' && i.sales?.length>0))
     .sort((a,b) => {
-      const profitOf = x => (x.sales||[]).reduce((s,v)=>s+v.salePrice,0) - x.purchasePrice;
-      if (sortBy==='profit') return profitOf(b) - profitOf(a);
-      if (sortBy==='days')   return daysSince(b.purchaseDate) - daysSince(a.purchaseDate);
+      const profitOf = x => (x.sales||[]).reduce((s,v)=>s+v.salePrice,0)-x.purchasePrice;
+      if (sortBy==='profit') return profitOf(b)-profitOf(a);
+      if (sortBy==='days')   return daysSince(b.purchaseDate)-daysSince(a.purchaseDate);
       if (sortBy==='recent') return b.purchaseDate.localeCompare(a.purchaseDate);
       return a.name.localeCompare(b.name);
     });
@@ -596,10 +527,10 @@ function Vitrina({ inventory, costCenters }) {
       const profit = rev - item.purchasePrice;
       const icon   = item.type==='plant' ? '🌿' : '📦';
       const status = item.type!=='plant' && item.sales?.length>0 ? ' ✓ Vendido' : '';
-      const priceStr = showPrices
-        ? `\n   Precio: ${fmt(item.purchasePrice)}  Gan: ${profit>=0?'+':''}${fmt(profit)}`
-        : '';
-      return `${icon} ${item.name}${status}${priceStr}`;
+      const parts  = [];
+      if (showSellPr && item.sellingPrice!=null) parts.push(`Precio: ${fmt(item.sellingPrice)}`);
+      if (showCosts)  parts.push(`Costo: ${fmt(item.purchasePrice)}  Gan: ${profit>=0?'+':''}${fmt(profit)}`);
+      return `${icon} ${item.name}${status}${parts.length ? '\n   '+parts.join('  ') : ''}`;
     }).join('\n');
     const text = `🌿 Bloom Aquatics\n${sep}\n${lines}\n${sep}\n${filtered.length} artículos`;
     if (navigator.share) {
@@ -611,169 +542,315 @@ function Vitrina({ inventory, costCenters }) {
     }
   };
 
-  /* ── Image / catalog share ──────────────────────────────── */
-  const generateCatalogImage = async () => {
-    const cols   = 2;
-    const cellW  = 200;
-    const photoH = 180;
-    const infoH  = showPrices ? 52 : 34;
-    const cellH  = photoH + infoH;
-    const pad    = 10;
-    const headerH= 54;
-    const rows   = Math.ceil(filtered.length / cols);
-    const W      = cols * cellW + (cols + 1) * pad;
-    const H      = headerH + rows * (cellH + pad) + pad;
+  /* ── Canvas image generation — respects viewMode, splits pages ── */
+  const ITEMS_PER_PAGE = { grid: 8, list: 12, detail: 6 };
 
-    const canvas = document.createElement('canvas');
-    canvas.width  = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d');
+  const loadImg = src => new Promise(res => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload  = () => res(img);
+    img.onerror = () => res(null);
+    img.src = src;
+  });
 
-    // Background
-    ctx.fillStyle = '#f9fafb';
-    ctx.fillRect(0, 0, W, H);
+  const roundRect = (ctx, x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+    ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+    ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+    ctx.closePath();
+  };
 
-    // Header bar
-    ctx.fillStyle = '#7c3aed';
-    ctx.fillRect(0, 0, W, headerH);
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🌿 Bloom Aquatics', W / 2, headerH / 2);
+  const generatePages = async () => {
+    const perPage = ITEMS_PER_PAGE[viewMode] || 8;
+    const pages   = [];
+    const font    = 'system-ui, -apple-system, sans-serif';
 
-    // Load image helper
-    const loadImg = src => new Promise(res => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload  = () => res(img);
-      img.onerror = () => res(null);
-      img.src = src;
-    });
+    for (let p = 0; p < Math.ceil(filtered.length / perPage); p++) {
+      const chunk = filtered.slice(p * perPage, (p + 1) * perPage);
+      const canvas = document.createElement('canvas');
+      const ctx    = canvas.getContext('2d');
+      const HEADER = 54;
+      const FOOTER = 28;
+      const PAD    = 10;
 
-    // Rounded-rect path helper
-    const roundRect = (x, y, w, h, r) => {
-      ctx.beginPath();
-      ctx.moveTo(x+r, y);
-      ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y,   x+w, y+r);
-      ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
-      ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x,   y+h, x,   y+h-r);
-      ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x,   y,   x+r, y);
-      ctx.closePath();
-    };
+      if (viewMode === 'grid') {
+        const COLS  = 2;
+        const CELL  = 180;
+        const PHOTO = 150;
+        const INFO  = showCosts || showSellPr ? 54 : 36;
+        const ROWS  = Math.ceil(chunk.length / COLS);
+        canvas.width  = COLS * CELL + (COLS+1) * PAD;
+        canvas.height = HEADER + ROWS*(PHOTO+INFO+PAD) + PAD + FOOTER;
+        ctx.fillStyle = '#f9fafb';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    for (let i = 0; i < filtered.length; i++) {
-      const item = filtered[i];
-      const col  = i % cols;
-      const row  = Math.floor(i / cols);
-      const x    = pad + col * (cellW + pad);
-      const y    = headerH + pad + row * (cellH + pad);
+        // Header
+        ctx.fillStyle = '#7c3aed';
+        ctx.fillRect(0, 0, canvas.width, HEADER);
+        ctx.fillStyle = 'white';
+        ctx.font = `bold 18px ${font}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🌿 Bloom Aquatics', canvas.width/2, HEADER/2);
 
-      // Card white background
-      ctx.fillStyle = '#ffffff';
-      roundRect(x, y, cellW, cellH, 12);
-      ctx.fill();
+        for (let i = 0; i < chunk.length; i++) {
+          const item  = chunk[i];
+          const col   = i % COLS;
+          const row   = Math.floor(i / COLS);
+          const x     = PAD + col*(CELL+PAD);
+          const y     = HEADER + PAD + row*(PHOTO+INFO+PAD);
+          const rev   = (item.sales||[]).reduce((s,v)=>s+v.salePrice,0);
+          const profit= rev - item.purchasePrice;
+          const sold  = item.type!=='plant' && item.sales?.length>0;
+          const harv  = item.type==='plant'  ? item.sales?.length||0 : 0;
 
-      // Photo area (clipped)
-      ctx.save();
-      roundRect(x, y, cellW, photoH, 12);
-      ctx.clip();
-      ctx.fillStyle = '#f3f4f6';
-      ctx.fillRect(x, y, cellW, photoH);
+          // Card
+          ctx.fillStyle = '#ffffff';
+          roundRect(ctx, x, y, CELL, PHOTO+INFO, 10);
+          ctx.fill();
 
-      const url = photoUrl(item.photoPath);
-      if (url) {
-        const img = await loadImg(url);
-        if (img) {
-          const aspect = img.width / img.height;
-          let sw = cellW, sh = photoH;
-          if (aspect > cellW / photoH) { sh = photoH; sw = sh * aspect; }
-          else { sw = cellW; sh = sw / aspect; }
-          ctx.drawImage(img, x + (cellW - sw) / 2, y + (photoH - sh) / 2, sw, sh);
+          // Photo
+          ctx.save();
+          roundRect(ctx, x, y, CELL, PHOTO, 10);
+          ctx.clip();
+          ctx.fillStyle = '#f3f4f6'; ctx.fillRect(x, y, CELL, PHOTO);
+          const url = photoUrl(item.photoPath);
+          if (url) {
+            const img = await loadImg(url);
+            if (img) {
+              const a = img.width/img.height;
+              let sw=CELL, sh=PHOTO;
+              if (a > CELL/PHOTO) { sh=PHOTO; sw=sh*a; } else { sw=CELL; sh=sw/a; }
+              ctx.drawImage(img, x+(CELL-sw)/2, y+(PHOTO-sh)/2, sw, sh);
+            }
+          }
+          if (!url) {
+            ctx.font = '56px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText(item.type==='plant'?'🌿':'📦', x+CELL/2, y+PHOTO/2);
+          }
+          ctx.restore();
+
+          // Badge
+          if (sold || harv>0) {
+            const bl = sold ? '✓ Vendido' : `${harv} cosecha${harv>1?'s':''}`;
+            ctx.font = `bold 9px ${font}`;
+            const bw = ctx.measureText(bl).width + 12;
+            ctx.fillStyle = sold?'#16a34a':'#7c3aed';
+            roundRect(ctx, x+CELL-bw-5, y+5, bw, 18, 9); ctx.fill();
+            ctx.fillStyle='white'; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText(bl, x+CELL-bw/2-5, y+14);
+          }
+
+          // Name
+          const name = item.name.length>20 ? item.name.slice(0,19)+'…' : item.name;
+          ctx.fillStyle='#111827'; ctx.font=`bold 12px ${font}`;
+          ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+          ctx.fillText(name, x+CELL/2, y+PHOTO+16);
+
+          // Selling price
+          if (showSellPr && item.sellingPrice!=null) {
+            ctx.fillStyle='#16a34a'; ctx.font=`bold 12px ${font}`;
+            ctx.fillText(`${fmt(item.sellingPrice)}`, x+CELL/2, y+PHOTO+32);
+          }
+          // Cost+profit
+          if (showCosts) {
+            ctx.fillStyle= profit>=0?'#1d4ed8':'#dc2626'; ctx.font=`11px ${font}`;
+            ctx.fillText(`Gan: ${profit>=0?'+':''}${fmt(profit)}`, x+CELL/2, y+PHOTO+(showSellPr?48:32));
+          }
+        }
+
+        // Footer page number
+        if (Math.ceil(filtered.length/perPage) > 1) {
+          ctx.fillStyle='#9ca3af'; ctx.font=`11px ${font}`;
+          ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+          ctx.fillText(`Página ${p+1} de ${Math.ceil(filtered.length/perPage)}`,
+            canvas.width/2, canvas.height-8);
+        }
+
+      } else if (viewMode === 'list') {
+        const ROW_H = 58;
+        canvas.width  = 400;
+        canvas.height = HEADER + chunk.length * ROW_H + PAD + FOOTER;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#7c3aed';
+        ctx.fillRect(0, 0, canvas.width, HEADER);
+        ctx.fillStyle = 'white';
+        ctx.font = `bold 16px ${font}`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('🌿 Bloom Aquatics', canvas.width/2, HEADER/2);
+
+        for (let i = 0; i < chunk.length; i++) {
+          const item  = chunk[i];
+          const y     = HEADER + i * ROW_H;
+          const rev   = (item.sales||[]).reduce((s,v)=>s+v.salePrice,0);
+          const profit= rev - item.purchasePrice;
+          // Row bg
+          ctx.fillStyle = i%2===0?'#ffffff':'#f9fafb';
+          ctx.fillRect(0, y, canvas.width, ROW_H);
+          ctx.strokeStyle='#f3f4f6'; ctx.lineWidth=1;
+          ctx.beginPath(); ctx.moveTo(0,y+ROW_H); ctx.lineTo(canvas.width,y+ROW_H); ctx.stroke();
+
+          // Thumb
+          const url = photoUrl(item.photoPath);
+          const TSIZ = 40; const TX = 10; const TY = y+(ROW_H-TSIZ)/2;
+          ctx.fillStyle='#f3f4f6';
+          roundRect(ctx,TX,TY,TSIZ,TSIZ,6); ctx.fill();
+          if (url) {
+            const img = await loadImg(url);
+            if (img) {
+              ctx.save(); roundRect(ctx,TX,TY,TSIZ,TSIZ,6); ctx.clip();
+              const a=img.width/img.height; let sw=TSIZ,sh=TSIZ;
+              if(a>1){sh=TSIZ;sw=sh*a;}else{sw=TSIZ;sh=sw/a;}
+              ctx.drawImage(img,TX+(TSIZ-sw)/2,TY+(TSIZ-sh)/2,sw,sh); ctx.restore();
+            }
+          } else {
+            ctx.font='22px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText(item.type==='plant'?'🌿':'📦', TX+TSIZ/2, TY+TSIZ/2);
+          }
+
+          // Name + subtitle
+          const name = item.name.length>28?item.name.slice(0,27)+'…':item.name;
+          ctx.fillStyle='#111827'; ctx.font=`bold 13px ${font}`;
+          ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+          ctx.fillText(name, TX+TSIZ+10, y+22);
+          const sold=item.type!=='plant'&&item.sales?.length>0;
+          const harv=item.type==='plant'?item.sales?.length||0:0;
+          let sub = item.type==='plant'?'🌿 Planta':'📦 Artículo';
+          if(sold) sub+=' · ✓ Vendido';
+          if(harv>0) sub+=` · ${harv} cosecha${harv>1?'s':''}`;
+          ctx.fillStyle='#9ca3af'; ctx.font=`10px ${font}`;
+          ctx.fillText(sub, TX+TSIZ+10, y+38);
+
+          // Right side price
+          if (showSellPr && item.sellingPrice!=null) {
+            ctx.fillStyle='#16a34a'; ctx.font=`bold 13px ${font}`;
+            ctx.textAlign='right';
+            ctx.fillText(fmt(item.sellingPrice), canvas.width-10, y+22);
+          }
+          if (showCosts) {
+            ctx.fillStyle=profit>=0?'#1d4ed8':'#dc2626'; ctx.font=`11px ${font}`;
+            ctx.textAlign='right';
+            ctx.fillText(`${profit>=0?'+':''}${fmt(profit)}`, canvas.width-10, y+(showSellPr?38:22));
+          }
+        }
+        if (Math.ceil(filtered.length/perPage)>1) {
+          ctx.fillStyle='#9ca3af'; ctx.font=`11px ${font}`;
+          ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+          ctx.fillText(`Página ${p+1} de ${Math.ceil(filtered.length/perPage)}`,
+            canvas.width/2, canvas.height-8);
+        }
+
+      } else {
+        // detail view
+        const CARD_H = showCosts||showSellPr ? 110 : 88;
+        const THUMB  = 70;
+        canvas.width  = 400;
+        canvas.height = HEADER + chunk.length*(CARD_H+PAD) + PAD + FOOTER;
+        ctx.fillStyle = '#f9fafb'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = '#7c3aed'; ctx.fillRect(0,0,canvas.width,HEADER);
+        ctx.fillStyle = 'white'; ctx.font=`bold 16px ${font}`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('🌿 Bloom Aquatics', canvas.width/2, HEADER/2);
+
+        for (let i = 0; i < chunk.length; i++) {
+          const item  = chunk[i];
+          const y     = HEADER + PAD + i*(CARD_H+PAD);
+          const rev   = (item.sales||[]).reduce((s,v)=>s+v.salePrice,0);
+          const profit= rev - item.purchasePrice;
+
+          ctx.fillStyle='#ffffff';
+          roundRect(ctx, PAD, y, canvas.width-2*PAD, CARD_H, 10); ctx.fill();
+
+          // Thumb
+          const url = photoUrl(item.photoPath);
+          const TX=PAD+10, TY=y+(CARD_H-THUMB)/2;
+          ctx.fillStyle='#f3f4f6'; roundRect(ctx,TX,TY,THUMB,THUMB,8); ctx.fill();
+          if(url){
+            const img=await loadImg(url);
+            if(img){
+              ctx.save(); roundRect(ctx,TX,TY,THUMB,THUMB,8); ctx.clip();
+              const a=img.width/img.height; let sw=THUMB,sh=THUMB;
+              if(a>1){sh=THUMB;sw=sh*a;}else{sw=THUMB;sh=sw/a;}
+              ctx.drawImage(img,TX+(THUMB-sw)/2,TY+(THUMB-sh)/2,sw,sh); ctx.restore();
+            }
+          } else {
+            ctx.font='36px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText(item.type==='plant'?'🌿':'📦',TX+THUMB/2,TY+THUMB/2);
+          }
+
+          const TX2 = TX+THUMB+12;
+          const name = item.name.length>26?item.name.slice(0,25)+'…':item.name;
+          ctx.fillStyle='#111827'; ctx.font=`bold 14px ${font}`;
+          ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+          ctx.fillText(name, TX2, y+24);
+
+          const sold=item.type!=='plant'&&item.sales?.length>0;
+          const harv=item.type==='plant'?item.sales?.length||0:0;
+          let status = sold?'✓ Vendido':harv>0?`${harv} cosecha${harv>1?'s':''}`:'Disponible';
+          ctx.fillStyle='#6b7280'; ctx.font=`11px ${font}`;
+          ctx.fillText(`${daysSince(item.purchaseDate)}d · ${status}`, TX2, y+42);
+
+          let lineY = 60;
+          if(showSellPr && item.sellingPrice!=null){
+            ctx.fillStyle='#16a34a'; ctx.font=`bold 13px ${font}`;
+            ctx.fillText(`Precio venta: ${fmt(item.sellingPrice)}`, TX2, y+lineY);
+            lineY+=18;
+          }
+          if(showCosts){
+            ctx.fillStyle=profit>=0?'#1d4ed8':'#dc2626'; ctx.font=`12px ${font}`;
+            ctx.fillText(`Costo: ${fmt(item.purchasePrice)}  Gan: ${profit>=0?'+':''}${fmt(profit)}`, TX2, y+lineY);
+          }
+          if(item.notes){
+            ctx.fillStyle='#9ca3af'; ctx.font=`italic 10px ${font}`;
+            const note = item.notes.length>40?item.notes.slice(0,39)+'…':item.notes;
+            ctx.fillText(note, TX2, y+CARD_H-8);
+          }
+        }
+        if(Math.ceil(filtered.length/perPage)>1){
+          ctx.fillStyle='#9ca3af'; ctx.font=`11px ${font}`;
+          ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+          ctx.fillText(`Página ${p+1} de ${Math.ceil(filtered.length/perPage)}`,
+            canvas.width/2, canvas.height-8);
         }
       }
-      // Emoji fallback if no photo or load failed
-      const hasPhoto = url && (await loadImg(url)) !== null;
-      if (!hasPhoto) {
-        ctx.font = '64px serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(item.type==='plant' ? '🌿' : '📦', x + cellW/2, y + photoH/2);
-      }
-      ctx.restore();
 
-      // Name
-      const name = item.name.length > 22 ? item.name.slice(0,21) + '…' : item.name;
-      ctx.fillStyle = '#111827';
-      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillText(name, x + cellW/2, y + photoH + 18);
-
-      // Price line (only if showPrices)
-      if (showPrices) {
-        const rev    = (item.sales||[]).reduce((s,v)=>s+v.salePrice, 0);
-        const profit = rev - item.purchasePrice;
-        ctx.fillStyle = profit >= 0 ? '#16a34a' : '#dc2626';
-        ctx.font = '12px system-ui, -apple-system, sans-serif';
-        ctx.fillText(
-          `Gan: ${profit>=0?'+':''}$${profit.toFixed(2)}`,
-          x + cellW/2, y + photoH + 36
-        );
-      }
-
-      // Sold / harvest badge
-      const sold     = item.type!=='plant' && item.sales?.length>0;
-      const harvests = item.type==='plant'  ? item.sales?.length||0 : 0;
-      if (sold || harvests>0) {
-        const badgeLabel = sold ? '✓ Vendido' : `${harvests} cosecha${harvests>1?'s':''}`;
-        ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
-        const bw = ctx.measureText(badgeLabel).width + 14;
-        const bh = 20;
-        const bx = x + cellW - bw - 6;
-        const by = y + 6;
-        ctx.fillStyle = sold ? '#16a34a' : '#7c3aed';
-        roundRect(bx, by, bw, bh, 10);
-        ctx.fill();
-        ctx.fillStyle = 'white';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(badgeLabel, bx + bw/2, by + bh/2);
-      }
+      pages.push(canvas);
     }
-
-    return canvas;
+    return pages;
   };
 
   const handleShareImage = async () => {
+    if (filtered.length === 0) { alert('No hay artículos para compartir.'); return; }
     setGen(true);
     try {
-      const canvas = await generateCatalogImage();
-      canvas.toBlob(async blob => {
-        const file = new File([blob], 'bloom-aquatics.png', { type:'image/png' });
-        try {
-          if (navigator.share && navigator.canShare?.({ files:[file] })) {
-            await navigator.share({ title:'Bloom Aquatics — Catálogo', files:[file] });
-          } else {
-            // Desktop fallback: download the image
-            const url = URL.createObjectURL(blob);
-            const a   = document.createElement('a');
-            a.href     = url;
-            a.download = 'bloom-aquatics-catalogo.png';
-            a.click();
-            URL.revokeObjectURL(url);
-          }
-        } catch(e) { console.error(e); }
-        setGen(false);
-      }, 'image/png');
-    } catch(e) { console.error(e); setGen(false); }
+      const pages = await generatePages();
+      const files = await Promise.all(pages.map((canvas, i) =>
+        new Promise(res => canvas.toBlob(blob =>
+          res(new File([blob], `bloom-catalogo-${i+1}.png`, { type:'image/png' })), 'image/png'))));
+
+      if (navigator.share && navigator.canShare?.({ files })) {
+        await navigator.share({ title:'Bloom Aquatics — Catálogo', files }).catch(()=>{});
+      } else {
+        // Desktop: download each page
+        files.forEach((file, i) => {
+          const url = URL.createObjectURL(file);
+          const a   = Object.assign(document.createElement('a'), { href:url, download:file.name });
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+      }
+    } catch(e) { console.error(e); }
+    setGen(false);
   };
 
   const vBtn = active => ({
-    background: active?'#f5f3ff':'transparent',
-    border: `1.5px solid ${active?'#7c3aed':'#e5e7eb'}`,
+    background:active?'#f5f3ff':'transparent',
+    border:`1.5px solid ${active?'#7c3aed':'#e5e7eb'}`,
     borderRadius:8, padding:'6px 10px', cursor:'pointer',
-    color: active?'#7c3aed':'#9ca3af',
+    color:active?'#7c3aed':'#9ca3af',
     minWidth:40, minHeight:40, fontSize:19,
     display:'flex', alignItems:'center', justifyContent:'center',
   });
@@ -785,6 +862,25 @@ function Vitrina({ inventory, costCenters }) {
     const url      = photoUrl(item.photoPath);
     const sold     = item.type!=='plant' && item.sales?.length>0;
     const harvests = item.type==='plant' ? item.sales?.length||0 : 0;
+
+    const PriceTag = () => {
+      if (!showSellPr && !showCosts) return null;
+      return (
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>
+          {showSellPr && item.sellingPrice!=null && (
+            <span style={{fontSize:12,fontWeight:700,color:'#16a34a',
+              background:'#f0fdf4',padding:'2px 8px',borderRadius:10,border:'1px solid #86efac'}}>
+              {fmt(item.sellingPrice)}
+            </span>
+          )}
+          {showCosts && (
+            <span style={{fontSize:11,color:profit>=0?'#1d4ed8':'#dc2626'}}>
+              {profit>=0?'+':''}{fmt(profit)} gan
+            </span>
+          )}
+        </div>
+      );
+    };
 
     if (viewMode==='list') return (
       <div key={item.id} onClick={()=>setDetail(item)}
@@ -799,13 +895,7 @@ function Vitrina({ inventory, costCenters }) {
             {sold      && <span style={{color:'#16a34a'}}> · ✓ Vendido</span>}
             {harvests>0 && <span style={{color:'#7c3aed'}}> · {harvests} cosecha{harvests>1?'s':''}</span>}
           </div>
-        </div>
-        <div style={{textAlign:'right',flexShrink:0}}>
-          {showPrices && <>
-            <div style={{fontSize:14,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
-              {profit>=0?'+':''}{fmt(profit)}</div>
-            <div style={{fontSize:11,color:'#9ca3af'}}>{fmt(item.purchasePrice)} costo</div>
-          </>}
+          <PriceTag/>
         </div>
       </div>
     );
@@ -819,20 +909,8 @@ function Vitrina({ inventory, costCenters }) {
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:15,fontWeight:700,color:'#111827',overflow:'hidden',
               textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
-            <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:6}}>{cc?.name}</div>
-            {showPrices && (
-              <div style={{display:'flex',gap:6}}>
-                {[['Costo',fmt(item.purchasePrice),'#6b7280'],
-                  ['Ventas',fmt(totalRev),'#16a34a'],
-                  ['Ganancia',fmt(profit),profit>=0?'#1d4ed8':'#dc2626']].map(([l,v,c])=>(
-                  <div key={l} style={{flex:1,background:'#f9fafb',borderRadius:8,
-                    padding:'6px 4px',textAlign:'center'}}>
-                    <div style={{fontSize:9,color:'#9ca3af',fontWeight:700,textTransform:'uppercase'}}>{l}</div>
-                    <div style={{fontSize:12,fontWeight:700,color:c,marginTop:2}}>{v}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:4}}>{cc?.name}</div>
+            <PriceTag/>
           </div>
         </div>
         {item.notes&&<div style={{fontSize:12,color:'#6b7280',fontStyle:'italic',
@@ -846,15 +924,11 @@ function Vitrina({ inventory, costCenters }) {
         style={{background:'#fff',borderRadius:14,overflow:'hidden',cursor:'pointer',
           border:`1.5px solid ${sold?'#d1fae5':'#e5e7eb'}`,
           boxShadow:'0 1px 4px rgba(0,0,0,0.06)',position:'relative'}}>
-        {sold && (
-          <div style={{position:'absolute',top:8,right:8,zIndex:2,background:'#16a34a',
-            color:'white',fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20}}>✓ Vendido</div>
-        )}
-        {harvests>0 && (
-          <div style={{position:'absolute',top:8,right:8,zIndex:2,background:'#7c3aed',
-            color:'white',fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20}}>
-            {harvests} cosecha{harvests>1?'s':''}</div>
-        )}
+        {sold && <div style={{position:'absolute',top:8,right:8,zIndex:2,background:'#16a34a',
+          color:'white',fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20}}>✓ Vendido</div>}
+        {harvests>0 && <div style={{position:'absolute',top:8,right:8,zIndex:2,background:'#7c3aed',
+          color:'white',fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20}}>
+          {harvests} cosecha{harvests>1?'s':''}</div>}
         <div style={{width:'100%',paddingTop:'100%',position:'relative',background:'#f3f4f6'}}>
           {url
             ? <img src={url} alt={item.name} style={{position:'absolute',inset:0,
@@ -866,16 +940,9 @@ function Vitrina({ inventory, costCenters }) {
         </div>
         <div style={{padding:'10px 10px 12px'}}>
           <div style={{fontSize:13,fontWeight:700,color:'#111827',overflow:'hidden',
-            textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{item.name}</div>
-          <div style={{fontSize:11,color:cc?.color,fontWeight:600,marginBottom:showPrices?4:0}}>
-            {cc?.name}</div>
-          {showPrices && (
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span style={{fontSize:11,color:'#9ca3af'}}>{daysSince(item.purchaseDate)}d</span>
-              <span style={{fontSize:13,fontWeight:700,color:profit>=0?'#16a34a':'#dc2626'}}>
-                {profit>=0?'+':''}{fmt(profit)}</span>
-            </div>
-          )}
+            textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:2}}>{item.name}</div>
+          <div style={{fontSize:11,color:cc?.color,fontWeight:600}}>{cc?.name}</div>
+          <PriceTag/>
         </div>
       </div>
     );
@@ -893,53 +960,31 @@ function Vitrina({ inventory, costCenters }) {
           <button style={vBtn(viewMode==='grid')}   title="Cuadrícula" onClick={()=>setViewMode('grid')}>⊞</button>
           <button style={vBtn(viewMode==='list')}   title="Lista"      onClick={()=>setViewMode('list')}>☰</button>
           <button style={vBtn(viewMode==='detail')} title="Detalle"    onClick={()=>setViewMode('detail')}>≡</button>
-
           <input value={search} onChange={e=>setSearch(e.target.value)}
             placeholder="🔍 Buscar…"
             style={{...S.input,flex:1,marginBottom:0,minHeight:40,padding:'8px 12px',fontSize:14}}/>
-
-          {/* Text share */}
-          <button onClick={handleShareText} title="Compartir como texto"
+          <button onClick={handleShareText} title="Compartir como texto (📋)"
             style={{background:'#7c3aed',border:'none',borderRadius:10,
-              padding:'8px 10px',cursor:'pointer',color:'white',fontSize:14,fontWeight:700,
-              minHeight:40,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',
-              gap:4}}>
+              padding:'8px 10px',cursor:'pointer',color:'white',fontSize:15,
+              minHeight:40,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
             📋
           </button>
-
-          {/* Image share */}
           <button onClick={handleShareImage} disabled={generating}
-            title="Compartir como imagen con fotos"
+            title={`Compartir como imagen (${viewMode}, dividido en páginas)`}
             style={{background:generating?'#9ca3af':'#16a34a',border:'none',borderRadius:10,
-              padding:'8px 10px',cursor:generating?'wait':'pointer',color:'white',fontSize:14,
-              fontWeight:700,minHeight:40,flexShrink:0,
-              display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-            {generating ? '⏳' : '🖼️'}
+              padding:'8px 10px',cursor:generating?'wait':'pointer',color:'white',fontSize:15,
+              minHeight:40,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            {generating?'⏳':'🖼️'}
           </button>
         </div>
 
-        {/* Row 2: "Mostrar precios" always visible — most important toggle */}
-        <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,
-          padding:'8px 12px',background:'#fffbeb',borderRadius:8,
-          border:'1px solid #f59e0b',cursor:'pointer',userSelect:'none'}}>
-          <input type="checkbox" checked={showPrices}
-            onChange={e=>setShowPr(e.target.checked)}
-            style={{width:18,height:18,accentColor:'#f59e0b',cursor:'pointer',flexShrink:0}}/>
-          <span style={{fontSize:13,color:'#92400e',fontWeight:600}}>
-            💰 Mostrar precios y ganancias
-          </span>
-          <span style={{fontSize:11,color:'#b45309',marginLeft:'auto'}}>
-            {showPrices ? 'VISIBLE' : 'oculto para clientes'}
-          </span>
-        </label>
-
-        {/* Row 3: collapsible filters */}
+        {/* Row 2: collapsible filters (price checkboxes live inside here) */}
         <button onClick={()=>setFO(o=>!o)}
           style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
-            background:'none',border:'none',cursor:'pointer',padding:'4px 0',
-            color:'#6b7280',fontSize:13}}>
+            background:'none',border:'none',cursor:'pointer',padding:'4px 0',color:'#6b7280',fontSize:13}}>
           <span style={{fontWeight:600}}>
             Filtros · {filtered.length} artículo{filtered.length!==1?'s':''}
+            {(showCosts||showSellPr) && <span style={{color:'#f59e0b',marginLeft:6}}>· 💰 precios visibles</span>}
           </span>
           <span style={{fontSize:18,display:'inline-block',transition:'transform 0.2s',
             transform:filterOpen?'rotate(180deg)':'rotate(0deg)'}}>⌄</span>
@@ -948,12 +993,33 @@ function Vitrina({ inventory, costCenters }) {
         {filterOpen && (
           <div style={{paddingTop:10,display:'flex',flexDirection:'column',gap:10,
             borderTop:'1px solid #e5e7eb',marginTop:6}}>
+
+            {/* Price visibility — highlighted section */}
+            <div style={{background:'#fffbeb',border:'1px solid #f59e0b',borderRadius:8,
+              padding:'8px 10px',display:'flex',flexDirection:'column',gap:6}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#92400e',marginBottom:2}}>
+                VISIBILIDAD DE PRECIOS (para compartir con clientes)
+              </div>
+              <label style={{display:'flex',alignItems:'center',gap:6,
+                fontSize:13,color:'#374151',cursor:'pointer',userSelect:'none'}}>
+                <input type="checkbox" checked={showSellPr}
+                  onChange={e=>setShowSP(e.target.checked)}
+                  style={{width:18,height:18,accentColor:'#16a34a',cursor:'pointer'}}/>
+                <span>💚 Mostrar <strong>precio de venta</strong> (para clientes)</span>
+              </label>
+              <label style={{display:'flex',alignItems:'center',gap:6,
+                fontSize:13,color:'#374151',cursor:'pointer',userSelect:'none'}}>
+                <input type="checkbox" checked={showCosts}
+                  onChange={e=>setShowCosts(e.target.checked)}
+                  style={{width:18,height:18,accentColor:'#f59e0b',cursor:'pointer'}}/>
+                <span>🔒 Mostrar <strong>costo + ganancia</strong> (interno)</span>
+              </label>
+            </div>
+
+            {/* Type + sold checkboxes */}
             <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
-              {[
-                [showProducts, setShowP,   '📦 Artículos'],
-                [showPlants,   setShowPl,  '🌿 Plantas'],
-                [showSold,     setShowSold,'✓ Vendidos'],
-              ].map(([checked,setter,label],i)=>(
+              {[[showProducts,setShowP,'📦 Artículos'],[showPlants,setShowPl,'🌿 Plantas'],
+                [showSold,setShowSold,'✓ Vendidos']].map(([checked,setter,label],i)=>(
                 <label key={i} style={{display:'flex',alignItems:'center',gap:6,
                   fontSize:13,color:'#374151',cursor:'pointer',userSelect:'none'}}>
                   <input type="checkbox" checked={checked}
@@ -963,6 +1029,8 @@ function Vitrina({ inventory, costCenters }) {
                 </label>
               ))}
             </div>
+
+            {/* Person + sort */}
             <div style={{display:'flex',gap:8}}>
               <select value={fCC} onChange={e=>setFCC(e.target.value)}
                 style={{...S.input,flex:1,marginBottom:0,minHeight:40,padding:'8px 10px',fontSize:13}}>
@@ -983,21 +1051,20 @@ function Vitrina({ inventory, costCenters }) {
 
       {/* Items */}
       <div style={{flex:1,overflowY:'auto'}}>
-        {filtered.length===0 ? (
-          <div style={{textAlign:'center',padding:'52px 16px',color:'#9ca3af'}}>
-            <div style={{fontSize:52,marginBottom:12}}>🏪</div>
-            <div style={{fontSize:16,fontWeight:600,color:'#374151',marginBottom:6}}>Sin resultados</div>
-            <div style={{fontSize:13}}>Cambia los filtros o la búsqueda</div>
-          </div>
-        ) : viewMode==='grid' ? (
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,padding:12}}>
-            {filtered.map(renderItem)}
-          </div>
-        ) : viewMode==='list' ? (
-          <div style={{background:'#fff'}}>{filtered.map(renderItem)}</div>
-        ) : (
-          <div style={{paddingTop:12}}>{filtered.map(renderItem)}</div>
-        )}
+        {filtered.length===0
+          ? <div style={{textAlign:'center',padding:'52px 16px',color:'#9ca3af'}}>
+              <div style={{fontSize:52,marginBottom:12}}>🏪</div>
+              <div style={{fontSize:16,fontWeight:600,color:'#374151',marginBottom:6}}>Sin resultados</div>
+              <div style={{fontSize:13}}>Cambia los filtros o la búsqueda</div>
+            </div>
+          : viewMode==='grid'
+            ? <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,padding:12}}>
+                {filtered.map(renderItem)}
+              </div>
+            : viewMode==='list'
+            ? <div style={{background:'#fff'}}>{filtered.map(renderItem)}</div>
+            : <div style={{paddingTop:12}}>{filtered.map(renderItem)}</div>
+        }
         <div style={{height:24}}/>
       </div>
 
