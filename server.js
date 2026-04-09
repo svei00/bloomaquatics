@@ -28,9 +28,10 @@ db.pragma('foreign_keys = ON');
 // ── Schema ────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS cost_centers (
-    id    TEXT PRIMARY KEY,
-    name  TEXT NOT NULL,
-    color TEXT NOT NULL DEFAULT '#7c3aed'
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    color      TEXT NOT NULL DEFAULT '#7c3aed',
+    photo_path TEXT
   );
   CREATE TABLE IF NOT EXISTS transactions (
     id             TEXT PRIMARY KEY,
@@ -86,6 +87,24 @@ try {
 } catch {
   // column already exists — no action needed
 }
+
+// ── Safe migration: add description column to inventory ───
+try {
+  db.exec('ALTER TABLE inventory ADD COLUMN description TEXT');
+  console.log('[DB] Migration OK: description column added.');
+} catch { /* already exists */ }
+
+// ── Safe migration: add is_available column to inventory ──
+try {
+  db.exec('ALTER TABLE inventory ADD COLUMN is_available INTEGER NOT NULL DEFAULT 1');
+  console.log('[DB] Migration OK: is_available column added.');
+} catch { /* already exists */ }
+
+// ── Safe migration: add photo_path to cost_centers ────────
+try {
+  db.exec('ALTER TABLE cost_centers ADD COLUMN photo_path TEXT');
+  console.log('[DB] Migration OK: cost_centers.photo_path added.');
+} catch { /* already exists */ }
 
 // ── Seed default cost centers if brand new ────────────────
 const ccCount = db.prepare('SELECT COUNT(*) AS c FROM cost_centers').get().c;
@@ -152,8 +171,10 @@ if (fs.existsSync(DIST)) {
 }
 
 // ── Cost Centers ──────────────────────────────────────────
-app.get('/api/cost-centers', (_req, res) =>
-  res.json(db.prepare('SELECT * FROM cost_centers ORDER BY rowid').all()));
+app.get('/api/cost-centers', (_req, res) => {
+  const rows = db.prepare('SELECT * FROM cost_centers ORDER BY rowid').all();
+  res.json(rows.map(r => ({ id:r.id, name:r.name, color:r.color, photoPath:r.photo_path||null })));
+});
 
 app.post('/api/cost-centers', (req, res) => {
   const { id, name, color } = req.body;
@@ -200,6 +221,8 @@ app.get('/api/inventory', (_req, res) => {
     notes: i.notes, status: i.status,
     photoPath: i.photo_path || null,
     sellingPrice: i.selling_price ?? null,
+    description: i.description || null,
+    isAvailable: i.is_available !== 0,
     sales: sales.filter(s => s.inventory_id === i.id).map(s => ({
       id: s.id, saleDate: s.sale_date, salePrice: s.sale_price,
       platform: s.platform, payment: s.payment, notes: s.notes,
@@ -208,18 +231,18 @@ app.get('/api/inventory', (_req, res) => {
 });
 
 app.post('/api/inventory', (req, res) => {
-  const { id, type, name, purchaseDate, purchasePrice, sellingPrice, ccId, qty, unit, notes } = req.body;
+  const { id, type, name, purchaseDate, purchasePrice, sellingPrice, ccId, qty, unit, notes, description, isAvailable } = req.body;
   db.prepare(`INSERT INTO inventory
-    (id,type,name,purchase_date,purchase_price,selling_price,cc_id,qty,unit,notes)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`)
-    .run(id, type, name, purchaseDate, purchasePrice, sellingPrice??null, ccId, qty||1, unit||'unidad', notes||null);
+    (id,type,name,purchase_date,purchase_price,selling_price,cc_id,qty,unit,notes,description,is_available)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, type, name, purchaseDate, purchasePrice, sellingPrice??null, ccId, qty||1, unit||'unidad', notes||null, description||null, isAvailable!==false?1:0);
   res.json({ ok: true });
 });
 
 app.patch('/api/inventory/:id', (req, res) => {
-  const { type, name, purchaseDate, purchasePrice, sellingPrice, ccId, qty, unit, notes } = req.body;
-  db.prepare(`UPDATE inventory SET type=?,name=?,purchase_date=?,purchase_price=?,selling_price=?,cc_id=?,qty=?,unit=?,notes=? WHERE id=?`)
-    .run(type, name, purchaseDate, purchasePrice, sellingPrice??null, ccId, qty||1, unit||'unidad', notes||null, req.params.id);
+  const { type, name, purchaseDate, purchasePrice, sellingPrice, ccId, qty, unit, notes, description, isAvailable } = req.body;
+  db.prepare(`UPDATE inventory SET type=?,name=?,purchase_date=?,purchase_price=?,selling_price=?,cc_id=?,qty=?,unit=?,notes=?,description=?,is_available=? WHERE id=?`)
+    .run(type, name, purchaseDate, purchasePrice, sellingPrice??null, ccId, qty||1, unit||'unidad', notes||null, description||null, isAvailable!==false?1:0, req.params.id);
   res.json({ ok: true });
 });
 
@@ -245,6 +268,36 @@ app.delete('/api/inventory/:itemId/photo', (req, res) => {
   if (item?.photo_path) {
     try { fs.unlinkSync(path.join(UPL_DIR, item.photo_path)); } catch {}
     db.prepare('UPDATE inventory SET photo_path=NULL WHERE id=?').run(req.params.itemId);
+  }
+  res.json({ ok: true });
+});
+
+
+// ── Cost Center photo ─────────────────────────────────────
+const ccUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPL_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+      cb(null, `cc_${req.params.ccId}${ext}`);
+    },
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, file.mimetype.startsWith('image/')),
+});
+
+app.post('/api/cost-centers/:ccId/photo', ccUpload.single('photo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image' });
+  db.prepare('UPDATE cost_centers SET photo_path=? WHERE id=?')
+    .run(req.file.filename, req.params.ccId);
+  res.json({ ok: true, photoPath: req.file.filename });
+});
+
+app.delete('/api/cost-centers/:ccId/photo', (req, res) => {
+  const row = db.prepare('SELECT photo_path FROM cost_centers WHERE id=?').get(req.params.ccId);
+  if (row?.photo_path) {
+    try { fs.unlinkSync(path.join(UPL_DIR, row.photo_path)); } catch {}
+    db.prepare('UPDATE cost_centers SET photo_path=NULL WHERE id=?').run(req.params.ccId);
   }
   res.json({ ok: true });
 });
