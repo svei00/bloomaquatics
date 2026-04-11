@@ -182,6 +182,14 @@ app.post('/api/cost-centers', (req, res) => {
   res.json({ ok: true });
 });
 
+
+app.patch('/api/cost-centers/:id', (req, res) => {
+  const { name, color } = req.body;
+  db.prepare('UPDATE cost_centers SET name=?, color=? WHERE id=?')
+    .run(name, color, req.params.id);
+  res.json({ ok: true });
+});
+
 app.delete('/api/cost-centers/:id', (req, res) => {
   db.prepare('DELETE FROM cost_centers WHERE id=?').run(req.params.id);
   res.json({ ok: true });

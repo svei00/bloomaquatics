@@ -1189,10 +1189,13 @@ function Reports({ transactions, inventory, costCenters }) {
 
 /* ── SETTINGS ─────────────────────────────────────────────── */
 function Settings({ costCenters, setCostCenters }) {
-  const [showAdd,setShowAdd]   = useState(false);
-  const [newName,setNewName]   = useState('');
-  const [newColor,setNewColor] = useState(CC_COLORS[0]);
-  const [uploading,setUploading]= useState(null);
+  const [showAdd,setShowAdd]     = useState(false);
+  const [newName,setNewName]     = useState('');
+  const [newColor,setNewColor]   = useState(CC_COLORS[0]);
+  const [uploading,setUploading] = useState(null);
+  const [editId,setEditId]       = useState(null);   // id of CC being edited
+  const [editName,setEditName]   = useState('');
+  const [editColor,setEditColor] = useState('');
 
   const addCC = async () => {
     if(!newName.trim()) return;
@@ -1201,12 +1204,26 @@ function Settings({ costCenters, setCostCenters }) {
     setCostCenters(p=>[...p,cc]);
     setNewName(''); setNewColor(CC_COLORS[0]); setShowAdd(false);
   };
+
+  const startEdit = cc => {
+    setEditId(cc.id); setEditName(cc.name); setEditColor(cc.color);
+    setShowAdd(false);
+  };
+
+  const saveEdit = async () => {
+    if(!editName.trim()) return;
+    await api.patch(`/api/cost-centers/${editId}`, { name:editName.trim(), color:editColor });
+    setCostCenters(p=>p.map(c=>c.id===editId?{...c,name:editName.trim(),color:editColor}:c));
+    setEditId(null);
+  };
+
   const removeCC = async id => {
     if(costCenters.length<=1){alert('Debe haber al menos un centro de costo.');return;}
     if(!window.confirm('¿Eliminar? Las transacciones existentes quedarán sin asignar.')) return;
     await api.delete(`/api/cost-centers/${id}`);
     setCostCenters(p=>p.filter(c=>c.id!==id));
   };
+
   const uploadCCPhoto = async (ccId, file) => {
     setUploading(ccId);
     try {
@@ -1214,6 +1231,7 @@ function Settings({ costCenters, setCostCenters }) {
       if(res.ok) setCostCenters(p=>p.map(c=>c.id===ccId?{...c,photoPath:res.photoPath}:c));
     } finally { setUploading(null); }
   };
+
   const removeCCPhoto = async ccId => {
     await api.delete(`/api/cost-centers/${ccId}/photo`);
     setCostCenters(p=>p.map(c=>c.id===ccId?{...c,photoPath:null}:c));
@@ -1225,76 +1243,144 @@ function Settings({ costCenters, setCostCenters }) {
       <div style={{...S.muted,marginBottom:24}}>🌿 Bloom Aquatics · v4.0 · SQLite + Express</div>
 
       <div style={{fontSize:15,fontWeight:700,color:'#374151',marginBottom:14}}>Centros de Costo</div>
+
       {costCenters.map(cc=>{
         const url = photoUrl(cc.photoPath);
         const inputRef = { current: null };
+        const isEditing = editId === cc.id;
+
         return (
           <div key={cc.id} style={S.card}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:cc.photoPath?12:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:14}}>
-                {/* Avatar — click to change photo */}
-                <div onClick={()=>inputRef.current?.click()} style={{cursor:'pointer',position:'relative'}}>
-                  {url
-                    ? <img src={url} style={{width:52,height:52,borderRadius:'50%',objectFit:'cover',
-                        border:`2px solid ${cc.color}`}} alt={cc.name}/>
-                    : <Avatar name={cc.name} color={cc.color} size={52}/>}
-                  <div style={{position:'absolute',bottom:0,right:0,background:'#7c3aed',
-                    borderRadius:'50%',width:18,height:18,display:'flex',alignItems:'center',
-                    justifyContent:'center',fontSize:10,color:'white',border:'1.5px solid white'}}>
-                    {uploading===cc.id?'…':'📷'}
-                  </div>
-                  <input ref={el=>inputRef.current=el} type="file" accept="image/*" style={{display:'none'}}
-                    onChange={e=>e.target.files?.[0]&&uploadCCPhoto(cc.id,e.target.files[0])}/>
-                </div>
-                <div>
-                  <div style={{fontWeight:700,fontSize:18,color:cc.color}}>{cc.name}</div>
-                  <div style={S.muted}>
+            {/* ── View mode ── */}
+            {!isEditing && (
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{display:'flex',alignItems:'center',gap:14}}>
+                  {/* Avatar — tap to change photo */}
+                  <div onClick={()=>inputRef.current?.click()} style={{cursor:'pointer',position:'relative'}}>
                     {url
-                      ? <span onClick={()=>removeCCPhoto(cc.id)}
-                          style={{color:'#dc2626',cursor:'pointer',textDecoration:'underline'}}>
-                          Eliminar foto
-                        </span>
-                      : 'Toca la foto para cambiarla'}
+                      ? <img src={url} style={{width:52,height:52,borderRadius:'50%',
+                          objectFit:'cover',border:`2px solid ${cc.color}`}} alt={cc.name}/>
+                      : <Avatar name={cc.name} color={cc.color} size={52}/>}
+                    <div style={{position:'absolute',bottom:0,right:0,background:'#7c3aed',
+                      borderRadius:'50%',width:18,height:18,display:'flex',alignItems:'center',
+                      justifyContent:'center',fontSize:10,color:'white',border:'1.5px solid white'}}>
+                      {uploading===cc.id?'…':'📷'}
+                    </div>
+                    <input ref={el=>inputRef.current=el} type="file" accept="image/*"
+                      style={{display:'none'}}
+                      onChange={e=>e.target.files?.[0]&&uploadCCPhoto(cc.id,e.target.files[0])}/>
                   </div>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:18,color:cc.color}}>{cc.name}</div>
+                    <div style={S.muted}>
+                      {url
+                        ? <span onClick={()=>removeCCPhoto(cc.id)}
+                            style={{color:'#dc2626',cursor:'pointer',textDecoration:'underline'}}>
+                            Eliminar foto
+                          </span>
+                        : 'Toca el avatar para cambiar foto'}
+                    </div>
+                  </div>
+                </div>
+                {/* Edit + Delete buttons */}
+                <div style={{display:'flex',gap:8,flexShrink:0}}>
+                  <button onClick={()=>startEdit(cc)} style={{
+                    background:'#f5f3ff',color:'#7c3aed',border:'1px solid #ddd6fe',
+                    borderRadius:10,padding:'10px 14px',cursor:'pointer',fontSize:14,fontWeight:600,minHeight:46}}>
+                    ✏️
+                  </button>
+                  {costCenters.length>1 && (
+                    <button onClick={()=>removeCC(cc.id)} style={{
+                      background:'#fef2f2',color:'#dc2626',border:'1px solid #fecaca',
+                      borderRadius:10,padding:'10px 14px',cursor:'pointer',fontSize:14,fontWeight:600,minHeight:46}}>
+                      ×
+                    </button>
+                  )}
                 </div>
               </div>
-              {costCenters.length>1&&(
-                <button onClick={()=>removeCC(cc.id)} style={{background:'#fef2f2',color:'#dc2626',
-                  border:'1px solid #fecaca',borderRadius:10,padding:'10px 16px',cursor:'pointer',
-                  fontSize:14,fontWeight:600,minHeight:46}}>Eliminar</button>
-              )}
-            </div>
+            )}
+
+            {/* ── Edit mode (expands inline) ── */}
+            {isEditing && (
+              <div>
+                <div style={{fontWeight:700,fontSize:15,color:'#111827',marginBottom:14}}>
+                  Editando: <span style={{color:editColor}}>{cc.name}</span>
+                </div>
+                <label style={S.label}>Nombre</label>
+                <input value={editName} onChange={e=>setEditName(e.target.value)}
+                  style={S.input} onKeyDown={e=>e.key==='Enter'&&saveEdit()}
+                  autoFocus/>
+                <label style={S.label}>Color</label>
+                <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:18}}>
+                  {CC_COLORS.map(col=>(
+                    <button key={col} onClick={()=>setEditColor(col)} style={{
+                      width:44,height:44,borderRadius:'50%',background:col,cursor:'pointer',
+                      border:editColor===col?'3px solid #111827':'3px solid transparent',
+                      transform:editColor===col?'scale(1.15)':'scale(1)',transition:'transform 0.15s'
+                    }}/>
+                  ))}
+                </div>
+                {/* Color preview */}
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,
+                  padding:'10px 14px',background:editColor+'12',borderRadius:10,border:`1px solid ${editColor}40`}}>
+                  <Avatar name={editName||cc.name} color={editColor} size={36}/>
+                  <span style={{fontWeight:700,color:editColor,fontSize:15}}>{editName||cc.name}</span>
+                </div>
+                <div style={{display:'flex',gap:10}}>
+                  <button onClick={()=>setEditId(null)} style={{
+                    flex:1,padding:'13px',borderRadius:10,background:'#f3f4f6',
+                    border:'none',color:'#374151',fontSize:15,cursor:'pointer',minHeight:48}}>
+                    Cancelar
+                  </button>
+                  <button onClick={saveEdit} style={{
+                    flex:2,padding:'13px',borderRadius:10,background:'#7c3aed',
+                    color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer',minHeight:48}}>
+                    Guardar Cambios
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
 
-      {!showAdd
-        ?<button onClick={()=>setShowAdd(true)} style={{width:'100%',padding:'16px',borderRadius:14,
-            border:'2px dashed #d1d5db',background:'transparent',color:'#6b7280',fontSize:15,
-            cursor:'pointer',minHeight:56,marginTop:4}}>+ Agregar Persona al Negocio</button>
-        :<div style={{...S.card,border:'2px solid #7c3aed50',marginTop:4}}>
+      {/* Add new CC */}
+      {!showAdd && !editId
+        ? <button onClick={()=>{setShowAdd(true);setEditId(null);}} style={{
+            width:'100%',padding:'16px',borderRadius:14,border:'2px dashed #d1d5db',
+            background:'transparent',color:'#6b7280',fontSize:15,cursor:'pointer',
+            minHeight:56,marginTop:4}}>+ Agregar Persona al Negocio</button>
+        : showAdd && (
+          <div style={{...S.card,border:'2px solid #7c3aed50',marginTop:4}}>
             <div style={{fontWeight:700,fontSize:16,color:'#111827',marginBottom:14}}>Nueva Persona</div>
             <label style={S.label}>Nombre</label>
             <input value={newName} onChange={e=>setNewName(e.target.value)}
-              placeholder="Ej: Papá, Carlos…" style={S.input} onKeyDown={e=>e.key==='Enter'&&addCC()}/>
+              placeholder="Ej: Papá, Carlos…" style={S.input}
+              onKeyDown={e=>e.key==='Enter'&&addCC()} autoFocus/>
             <label style={S.label}>Color</label>
             <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:18}}>
-              {CC_COLORS.map(c=>(
-                <button key={c} onClick={()=>setNewColor(c)} style={{width:46,height:46,borderRadius:'50%',
-                  background:c,cursor:'pointer',border:newColor===c?'3px solid #111827':'3px solid transparent',
-                  transform:newColor===c?'scale(1.18)':'scale(1)',transition:'transform 0.15s'}}/>
+              {CC_COLORS.map(col=>(
+                <button key={col} onClick={()=>setNewColor(col)} style={{
+                  width:46,height:46,borderRadius:'50%',background:col,cursor:'pointer',
+                  border:newColor===col?'3px solid #111827':'3px solid transparent',
+                  transform:newColor===col?'scale(1.18)':'scale(1)',transition:'transform 0.15s'}}/>
               ))}
             </div>
             <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>{setShowAdd(false);setNewName('');}} style={{flex:1,padding:'14px',
-                borderRadius:10,background:'#f3f4f6',border:'none',color:'#374151',fontSize:15,
-                cursor:'pointer',minHeight:50}}>Cancelar</button>
-              <button onClick={addCC} style={{flex:2,padding:'14px',borderRadius:10,background:'#7c3aed',
+              <button onClick={()=>{setShowAdd(false);setNewName('');}} style={{
+                flex:1,padding:'14px',borderRadius:10,background:'#f3f4f6',
+                border:'none',color:'#374151',fontSize:15,cursor:'pointer',minHeight:50}}>
+                Cancelar</button>
+              <button onClick={addCC} style={{
+                flex:2,padding:'14px',borderRadius:10,background:'#7c3aed',
                 color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer',minHeight:50}}>
                 Guardar</button>
             </div>
-          </div>}
+          </div>
+        )}
 
+
+      {/* Deploy info */}
       <div style={{marginTop:36,background:'#f5f3ff',borderRadius:14,padding:'18px 16px',border:'1px solid #ddd6fe'}}>
         <div style={{fontWeight:700,fontSize:14,color:'#4c1d95',marginBottom:14}}>🖥️ Deploy en DietPi · Puerto 4567</div>
         {[['1. Instalar','npm install'],['2. Build React','npm run build'],
