@@ -528,13 +528,17 @@ function Vitrina({ inventory, costCenters }) {
       const rev    = (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
       const profit = rev - item.purchasePrice;
       const icon   = item.type==='plant' ? '🌿' : '📦';
-      const status = item.type!=='plant' && item.sales?.length>0 ? ' ✓ Vendido' : '';
-      const parts  = [];
-      if (showDesc && item.description)               parts.push(item.description);
-      if (showSellPr && item.sellingPrice!=null)       parts.push(`Price: ${fmt(item.sellingPrice)}`);
-      if (showCosts)                                   parts.push(`Costo: ${fmt(item.purchasePrice)}  Gan: ${profit>=0?'+':''}${fmt(profit)}`);
-      return `${icon} ${item.name}${status}${parts.length ? '\n   '+parts.join(' · ') : ''}`;
-    }).join('\n');
+      const sold   = item.type!=='plant' && item.sales?.length>0;
+      const harv   = item.type==='plant'  ? item.sales?.length||0 : 0;
+      let line = `${icon} ${item.name}`;
+      if (sold)   line += '  ✓ Vendido';
+      if (harv>0) line += `  (${harv} cosecha${harv>1?'s':''})`;
+      const extras = [];
+      if (showDesc   && item.description)        extras.push(`   📋 ${item.description}`);
+      if (showSellPr && item.sellingPrice!=null) extras.push(`   💚 Price: ${fmt(item.sellingPrice)}`);
+      if (showCosts)                             extras.push(`   🔒 Gan: ${profit>=0?'+':''}${fmt(profit)}`);
+      return extras.length ? line + '\n' + extras.join('\n') : line;
+    }).join('\n\n');
     const text = `🌿 Bloom Aquatics\n${sep}\n${lines}\n${sep}\n${filtered.length} items`;
     if (navigator.share) {
       navigator.share({ title:'Bloom Aquatics', text }).catch(()=>{});
@@ -988,6 +992,40 @@ function Vitrina({ inventory, costCenters }) {
 
 
 /* ── REPORTS ─────────────────────────────────────────────── */
+/* ── BAR CHART ───────────────────────────────────────────── */
+function BarChart({ data }) {
+  const maxVal = Math.max(...data.map(d=>Math.max(d.income||0, d.expense||0)), 1);
+  const H=80, BW=8, GAP=2, GW=22;
+  const totalW = data.length * (GW + 4);
+  return (
+    <div style={{overflowX:'auto', marginBottom:18}}>
+      <svg width={Math.max(totalW,300)} height={H+26}
+           style={{display:'block', minWidth:'100%'}}>
+        <line x1={0} y1={H} x2={totalW} y2={H} stroke="#e5e7eb" strokeWidth={1}/>
+        {data.map((d,i) => {
+          const x  = i*(GW+4);
+          const iH = ((d.income||0)/maxVal)*H;
+          const eH = ((d.expense||0)/maxVal)*H;
+          return (
+            <g key={i}>
+              {iH>0 && <rect x={x}        y={H-iH} width={BW} height={iH} fill="#16a34a" rx={2}/>}
+              {eH>0 && <rect x={x+BW+GAP} y={H-eH} width={BW} height={eH} fill="#dc2626" rx={2}/>}
+              <text x={x+GW/2} y={H+16} textAnchor="middle" fontSize={8} fill="#9ca3af">{d.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{display:'flex',gap:16,justifyContent:'center',marginTop:4}}>
+        {[['#16a34a','Ingresos'],['#dc2626','Gastos']].map(([col,l])=>(
+          <div key={l} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'#6b7280'}}>
+            <div style={{width:10,height:10,borderRadius:2,background:col}}/>{l}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Reports({ transactions, inventory, costCenters }) {
   const [year,setYear]   = useState(new Date().getFullYear());
   const [fCC,setFCC]     = useState('all');
@@ -1316,7 +1354,11 @@ function Dashboard({ transactions, inventory, costCenters, month, year, onMonthC
         {stats.map(cc=>(
           <div key={cc.id} style={S.card}>
             <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}>
-              <Avatar name={cc.name} color={cc.color}/>
+              {cc.photoPath
+                ? <img src={photoUrl(cc.photoPath)} alt={cc.name}
+                    style={{width:38,height:38,borderRadius:'50%',objectFit:'cover',
+                      border:`2px solid ${cc.color}`,flexShrink:0}}/>
+                : <Avatar name={cc.name} color={cc.color}/>}
               <span style={{fontWeight:700,fontSize:17,color:cc.color}}>{cc.name}</span>
             </div>
             <div style={{display:'flex',gap:10}}>
