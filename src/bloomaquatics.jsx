@@ -15,6 +15,13 @@ const inY       = (d,y)   => { try{ return new Date(d+'T12:00:00').getFullYear()
 const daysSince = d        => { try{ return Math.floor((Date.now()-new Date(d+'T12:00:00'))/86400000); }catch{return 0;} };
 const photoUrl  = p        => p ? `/uploads/${p}?t=${Date.now()}` : null;
 
+// ── Inventory type helpers ────────────────────────────────
+// Animals (shrimp, fish…) behave like plants: multi-venta / no se marcan "vendido".
+const isMulti   = t => t==='plant' || t==='animal';
+const typeIcon  = t => t==='plant' ? '🌿' : t==='animal' ? '🦐' : t==='supply' ? '🧪' : '📦';
+const typeLabel = t => t==='plant' ? 'Planta' : t==='animal' ? 'Animal' : t==='supply' ? 'Insumo' : 'Artículo';
+const normName  = s => (s||'').toLowerCase().trim();
+
 const api = {
   get:    url     => fetch(url).then(r=>r.json()),
   post:   (url,b) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json()),
@@ -73,7 +80,7 @@ function PhotoThumb({ photoPath, type, size=56, radius=10 }) {
       background:'#f3f4f6', border:'1px solid #e5e7eb', display:'flex', alignItems:'center', justifyContent:'center' }}>
       {url
         ? <img src={url} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt=""/>
-        : <span style={{ fontSize:size*.45 }}>{type==='plant'?'🌿':type==='supply'?'🧪':'📦'}</span>}
+        : <span style={{ fontSize:size*.45 }}>{typeIcon(type)}</span>}
     </div>
   );
 }
@@ -155,7 +162,7 @@ function Modal({ title, onClose, children }) {
 }
 
 /* ── HYBRID AUTOCOMPLETE ─────────────────────────────────── */
-function AutoDesc({ value, onChange, inventory, placeholder }) {
+function AutoDesc({ value, onChange, onPick, inventory, placeholder }) {
   const [open, setOpen] = useState(false);
   const lower    = (value||'').toLowerCase().trim();
   const matches  = lower.length>=2 ? inventory.filter(i=>i.name.toLowerCase().includes(lower)).slice(0,6) : [];
@@ -164,7 +171,7 @@ function AutoDesc({ value, onChange, inventory, placeholder }) {
 
   return (
     <div style={{ position:'relative', marginBottom:12 }}>
-      <input value={value} onChange={e=>{onChange(e.target.value);setOpen(true);}}
+      <input value={value} onChange={e=>{onChange(e.target.value);onPick?.(null);setOpen(true);}}
         onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),180)}
         placeholder={placeholder} style={{...S.input, marginBottom:0}}/>
       {open && matches.length>0 && (
@@ -173,13 +180,13 @@ function AutoDesc({ value, onChange, inventory, placeholder }) {
           <div style={{ padding:'6px 12px', fontSize:11, color:'#7c3aed', fontWeight:700,
             background:'#f5f3ff', borderBottom:'1px solid #ede9fe' }}>🔍 En tu catálogo:</div>
           {matches.map(item=>(
-            <div key={item.id} onMouseDown={()=>{onChange(item.name);setOpen(false);}}
+            <div key={item.id} onMouseDown={()=>{onChange(item.name);onPick?.(item);setOpen(false);}}
               style={{ padding:'11px 14px', cursor:'pointer', fontSize:14, color:'#111827',
                 display:'flex', gap:10, alignItems:'center', borderBottom:'0.5px solid #f9fafb' }}>
               <PhotoThumb photoPath={item.photoPath} type={item.type} size={32} radius={6}/>
               <span style={{flex:1}}>{item.name}</span>
               <span style={{fontSize:11,color:'#7c3aed',fontWeight:700}}>
-                {item.type==='plant'?'Planta':item.type==='supply'?'Insumo':'Artículo'}
+                {typeLabel(item.type)}
               </span>
             </div>
           ))}
@@ -205,6 +212,7 @@ function TxnModal({ costCenters, inventory, onSave, onClose }) {
   const [ccId,setCcId]     = useState(costCenters[0]?.id||'');
   const [payment,setPay]   = useState('Efectivo');
   const [notes,setNotes]   = useState('');
+  const [linkedItemId,setLinkedItemId] = useState(null); // FK → inventory.id (for reportes por artículo)
 
   return (
     <Modal title="Nueva Transacción" onClose={onClose}>
@@ -219,7 +227,7 @@ function TxnModal({ costCenters, inventory, onSave, onClose }) {
       <label style={S.label}>Fecha</label>
       <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={S.input}/>
       <label style={S.label}>Descripción *</label>
-      <AutoDesc value={desc} onChange={setDesc} inventory={inventory}
+      <AutoDesc value={desc} onChange={setDesc} onPick={it=>setLinkedItemId(it?.id||null)} inventory={inventory}
         placeholder={type==='income'?'Ej: Stroller, Java fern, OfferUp…':'Ej: Seachem Flourish, gas…'}/>
       <label style={S.label}>Monto ($) *</label>
       <input type="number" step="0.01" min="0" placeholder="0.00"
@@ -237,7 +245,9 @@ function TxnModal({ costCenters, inventory, onSave, onClose }) {
         style={{...S.input,height:64,resize:'vertical'}} placeholder="Plataforma, cliente…"/>
       <button style={S.btn(type==='income'?'#16a34a':'#dc2626')} onClick={()=>{
         if(!desc||!amount) return;
-        onSave({id:uid(),date,type,desc,amount:parseFloat(amount),ccId,payment,notes});
+        // Fallback: if no suggestion was picked but the text matches a catalog name exactly, link it anyway.
+        const link = linkedItemId || inventory.find(i=>normName(i.name)===normName(desc))?.id || null;
+        onSave({id:uid(),date,type,desc,amount:parseFloat(amount),ccId,payment,notes,linkedItemId:link});
         onClose();
       }}>Guardar</button>
     </Modal>
@@ -264,9 +274,10 @@ function InvModal({ costCenters, onSave, onClose }) {
 
   return (
     <Modal title="Agregar al Inventario" onClose={onClose}>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
         {[['product','📦','Artículo','Para reventa'],
           ['plant',  '🌿','Planta',  'Multi-cosecha'],
+          ['animal', '🦐','Animal',  'Camarones, peces…'],
           ['supply', '🧪','Insumo',  'Vitaminas, CO2…']].map(([t,ic,lb,sub])=>(
           <button key={t} onClick={()=>setType(t)} style={{
             padding:'10px 4px',borderRadius:10,textAlign:'center',cursor:'pointer',
@@ -280,7 +291,7 @@ function InvModal({ costCenters, onSave, onClose }) {
       </div>
       <label style={S.label}>Nombre *</label>
       <input value={name} onChange={e=>setName(e.target.value)}
-        placeholder={type==='plant'?'Ej: Anubias roja…':type==='supply'?'Ej: Seachem Flourish…':'Ej: Stroller Britax…'}
+        placeholder={type==='plant'?'Ej: Anubias roja…':type==='animal'?'Ej: Shrimp Red Cherry…':type==='supply'?'Ej: Seachem Flourish…':'Ej: Stroller Britax…'}
         style={S.input}/>
       <label style={S.label}>Fecha de Compra</label>
       <input type="date" value={pDate} onChange={e=>setPDate(e.target.value)} style={S.input}/>
@@ -341,7 +352,7 @@ function SaleModal({ item, onSave, onClose }) {
   const [platform,setPlatform] = useState('OfferUp');
   const [payment,setPay]       = useState('Efectivo');
   const [notes,setNotes]       = useState('');
-  const isPlant = item.type==='plant';
+  const isPlant = isMulti(item.type);   // plantas y animales: cosecha/cría multi-venta
   const prevRev = (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
   return (
     <Modal title={isPlant?'🌿 Registrar Cosecha':'💰 Marcar Vendido'} onClose={onClose}>
@@ -397,8 +408,8 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
         padding:'10px 14px',marginBottom:14,fontSize:12,color:'#92400e'}}>
         ⚠️ Puedes corregir tipo, nombre, fechas, precios y disponibilidad. Las ventas no se afectan.
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
-        {[['product','📦','Artículo'],['plant','🌿','Planta'],['supply','🧪','Insumo']].map(([t,ic,lb])=>(
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+        {[['product','📦','Artículo'],['plant','🌿','Planta'],['animal','🦐','Animal'],['supply','🧪','Insumo']].map(([t,ic,lb])=>(
           <button key={t} onClick={()=>setType(t)} style={{
             padding:'10px 4px',borderRadius:10,textAlign:'center',cursor:'pointer',
             border:`2px solid ${type===t?'#7c3aed':'#e5e7eb'}`,
@@ -491,6 +502,7 @@ function Vitrina({ inventory, costCenters }) {
   const [search,setSearch]       = useState('');
   const [showProducts,setShowP]  = useState(true);
   const [showPlants,setShowPl]   = useState(true);
+  const [showAnimals,setShowA]   = useState(true);
   const [showSold,setShowSold]   = useState(true);
   const [availFilter,setAF]      = useState('available'); // 'available' | 'unavailable' | 'all'
   const [showCosts,setShowCosts] = useState(false);
@@ -504,10 +516,10 @@ function Vitrina({ inventory, costCenters }) {
 
   const filtered = inventory
     .filter(i => i.type !== 'supply')
-    .filter(i => (i.type==='product' && showProducts)||(i.type==='plant' && showPlants))
+    .filter(i => (i.type==='product' && showProducts)||(i.type==='plant' && showPlants)||(i.type==='animal' && showAnimals))
     .filter(i => fCC==='all' || i.ccId===fCC)
     .filter(i => !search || i.name.toLowerCase().includes(search.toLowerCase()))
-    .filter(i => showSold || !(i.type!=='plant' && i.sales?.length>0))
+    .filter(i => showSold || !(!isMulti(i.type) && i.sales?.length>0))
     .filter(i => {
       if (availFilter==='available')   return i.isAvailable!==false;
       if (availFilter==='unavailable') return i.isAvailable===false;
@@ -527,9 +539,9 @@ function Vitrina({ inventory, costCenters }) {
     const lines = filtered.map(item => {
       const rev    = (item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
       const profit = rev - item.purchasePrice;
-      const icon   = item.type==='plant' ? '🌿' : '📦';
-      const sold   = item.type!=='plant' && item.sales?.length>0;
-      const harv   = item.type==='plant'  ? item.sales?.length||0 : 0;
+      const icon   = typeIcon(item.type);
+      const sold   = !isMulti(item.type) && item.sales?.length>0;
+      const harv   = isMulti(item.type)  ? item.sales?.length||0 : 0;
       let line = `${icon} ${item.name}`;
       if (sold)   line += '  ✓ Vendido';
       if (harv>0) line += `  (${harv} cosecha${harv>1?'s':''})`;
@@ -591,8 +603,8 @@ function Vitrina({ inventory, costCenters }) {
           const x=PAD+col*(CELL+PAD); const y=HEADER+PAD+row*(PHOTO+INFO+PAD);
           const rev=(item.sales||[]).reduce((s,v)=>s+v.salePrice,0);
           const profit=rev-item.purchasePrice;
-          const sold=item.type!=='plant'&&item.sales?.length>0;
-          const harv=item.type==='plant'?item.sales?.length||0:0;
+          const sold=!isMulti(item.type)&&item.sales?.length>0;
+          const harv=isMulti(item.type)?item.sales?.length||0:0;
           ctx.fillStyle='#fff'; rr(ctx,x,y,CELL,PHOTO+INFO,10); ctx.fill();
           // photo
           ctx.save(); rr(ctx,x,y,CELL,PHOTO,10); ctx.clip();
@@ -602,7 +614,7 @@ function Vitrina({ inventory, costCenters }) {
             if(a>CELL/PHOTO){sh=PHOTO;sw=sh*a;}else{sw=CELL;sh=sw/a;}
             ctx.drawImage(img,x+(CELL-sw)/2,y+(PHOTO-sh)/2,sw,sh);}}
           if(!url){ctx.font='52px serif';ctx.textAlign='center';ctx.textBaseline='middle';
-            ctx.fillText(item.type==='plant'?'🌿':'📦',x+CELL/2,y+PHOTO/2);}
+            ctx.fillText(typeIcon(item.type),x+CELL/2,y+PHOTO/2);}
           ctx.restore();
           // badge
           if(sold||harv>0){const bl=sold?'✓ Vendido':`${harv}x cosecha`;
@@ -656,7 +668,7 @@ function Vitrina({ inventory, costCenters }) {
             const a=img.width/img.height;let sw=TSIZ,sh=TSIZ;if(a>1){sh=TSIZ;sw=sh*a;}else{sw=TSIZ;sh=sw/a;}
             ctx.drawImage(img,TX+(TSIZ-sw)/2,TY+(TSIZ-sh)/2,sw,sh);ctx.restore();}}
           else{ctx.font='22px serif';ctx.textAlign='center';ctx.textBaseline='middle';
-            ctx.fillText(item.type==='plant'?'🌿':'📦',TX+TSIZ/2,TY+TSIZ/2);}
+            ctx.fillText(typeIcon(item.type),TX+TSIZ/2,TY+TSIZ/2);}
           const TX2=TX+TSIZ+10;
           const name=item.name.length>26?item.name.slice(0,25)+'…':item.name;
           ctx.fillStyle='#111827';ctx.font=`bold 13px ${font}`;
@@ -694,13 +706,13 @@ function Vitrina({ inventory, costCenters }) {
             const a=img.width/img.height;let sw=THUMB,sh=THUMB;if(a>1){sh=THUMB;sw=sh*a;}else{sw=THUMB;sh=sw/a;}
             ctx.drawImage(img,TX+(THUMB-sw)/2,TY+(THUMB-sh)/2,sw,sh);ctx.restore();}}
           else{ctx.font='36px serif';ctx.textAlign='center';ctx.textBaseline='middle';
-            ctx.fillText(item.type==='plant'?'🌿':'📦',TX+THUMB/2,TY+THUMB/2);}
+            ctx.fillText(typeIcon(item.type),TX+THUMB/2,TY+THUMB/2);}
           const TX2=TX+THUMB+12;
           const name=item.name.length>24?item.name.slice(0,23)+'…':item.name;
           ctx.fillStyle='#111827';ctx.font=`bold 14px ${font}`;
           ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText(name,TX2,y+22);
-          const sold=item.type!=='plant'&&item.sales?.length>0;
-          const harv=item.type==='plant'?item.sales?.length||0:0;
+          const sold=!isMulti(item.type)&&item.sales?.length>0;
+          const harv=isMulti(item.type)?item.sales?.length||0:0;
           let status=sold?'✓ Vendido':harv>0?`${harv}x cosecha`:item.isAvailable===false?'⛔ No disponible':'Disponible';
           ctx.fillStyle='#6b7280';ctx.font=`11px ${font}`;ctx.fillText(status,TX2,y+40);
           let lY=58;
@@ -777,8 +789,8 @@ function Vitrina({ inventory, costCenters }) {
   const renderItem = item => {
     const cc=costCenters.find(c=>c.id===item.ccId);
     const url=photoUrl(item.photoPath);
-    const sold=item.type!=='plant'&&item.sales?.length>0;
-    const harvests=item.type==='plant'?item.sales?.length||0:0;
+    const sold=!isMulti(item.type)&&item.sales?.length>0;
+    const harvests=isMulti(item.type)?item.sales?.length||0:0;
     const unavailable=item.isAvailable===false;
 
     if(viewMode==='list') return (
@@ -846,7 +858,7 @@ function Vitrina({ inventory, costCenters }) {
                 width:'100%',height:'100%',objectFit:'cover'}}/>
             :<div style={{position:'absolute',inset:0,display:'flex',
                 alignItems:'center',justifyContent:'center',fontSize:48}}>
-                {item.type==='plant'?'🌿':'📦'}
+                {typeIcon(item.type)}
               </div>}
         </div>
         <div style={{padding:'10px 10px 12px'}}>
@@ -937,6 +949,7 @@ function Vitrina({ inventory, costCenters }) {
             {/* Type + sold */}
             <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
               {[[showProducts,setShowP,'📦 Artículos'],[showPlants,setShowPl,'🌿 Plantas'],
+                [showAnimals,setShowA,'🦐 Animales'],
                 [showSold,setShowSold,'✓ Vendidos']].map(([checked,setter,label],i)=>(
                 <label key={i} style={{display:'flex',alignItems:'center',gap:6,
                   fontSize:13,color:'#374151',cursor:'pointer',userSelect:'none'}}>
@@ -1045,23 +1058,36 @@ function Reports({ transactions, inventory, costCenters }) {
   const mData = MONTHS_S2.map((m,mi)=>({label:m,...calcM(mi)}));
   const total  = mData.reduce((s,m)=>({income:s.income+m.income,expense:s.expense+m.expense,net:s.net+m.net}),{income:0,expense:0,net:0});
 
-  // Best performer analysis
-  const performers = inventory
-    .filter(i=>i.type!=='supply'&&(fCC==='all'||i.ccId===fCC))
-    .map(i=>{
-      const rev      = (i.sales||[]).reduce((s,x)=>s+x.salePrice,0);
-      const profit   = rev - i.purchasePrice;
-      const roi      = i.purchasePrice>0 ? (profit/i.purchasePrice)*100 : null;
-      const days     = daysSince(i.purchaseDate);
-      const salesCnt = i.sales?.length||0;
-      const avgSale  = salesCnt>0 ? rev/salesCnt : 0;
-      const profPerDay = days>0&&profit>0 ? profit/days : 0;
-      return { id:i.id, name:i.name, type:i.type, purchasePrice:i.purchasePrice,
-               rev, profit, roi, days, salesCnt, avgSale, profPerDay,
-               cc:costCenters.find(c=>c.id===i.ccId) };
-    })
-    .filter(x=>x.salesCnt>0)
-    .sort((a,b)=>b.profit-a.profit);
+  // Best performer analysis — built from real income transactions (how sales
+  // are actually recorded), linked to inventory via linkedItemId. Falls back to
+  // an exact name match so historical rows work even before the backfill runs.
+  const invById   = new Map(inventory.map(i=>[i.id,i]));
+  const invByName = new Map();
+  inventory.forEach(i=>{ const k=normName(i.name); if(!invByName.has(k)) invByName.set(k,i); });
+
+  const perfMap = new Map();
+  transactions
+    .filter(t=>t.type==='income' && inY(t.date,year) && (fCC==='all'||t.ccId===fCC))
+    .forEach(t=>{
+      const item = (t.linkedItemId && invById.get(t.linkedItemId)) || invByName.get(normName(t.desc)) || null;
+      if (item && item.type==='supply') return;          // insumos no son ventas de artículo
+      const key = item ? `id:${item.id}` : `tx:${normName(t.desc)}`;
+      let g = perfMap.get(key);
+      if(!g){ g={ item, name:item?.name||t.desc, type:item?.type||'product',
+                  rev:0, salesCnt:0, ccId:item?.ccId||t.ccId }; perfMap.set(key,g); }
+      g.rev      += (t.amount||0);
+      g.salesCnt += 1;
+    });
+
+  const performers = [...perfMap.values()].map(g=>{
+    const cost    = g.item ? (g.item.purchasePrice||0) : 0;
+    const profit  = g.rev - cost;
+    const roi     = cost>0 ? (profit/cost)*100 : null;
+    const avgSale = g.salesCnt>0 ? g.rev/g.salesCnt : 0;
+    return { id:g.item?.id||g.name, name:g.name, type:g.type, rev:g.rev, cost, profit, roi,
+             salesCnt:g.salesCnt, avgSale, hasCost:!!g.item,
+             cc:costCenters.find(c=>c.id===g.ccId) };
+  }).sort((a,b)=>b.profit-a.profit);
 
   const payMap = {};
   [...transactions.filter(t=>t.type==='income'&&inY(t.date,year)&&(fCC==='all'||t.ccId===fCC)),
@@ -1123,8 +1149,9 @@ function Reports({ transactions, inventory, costCenters }) {
           </table>
         </div>
         {Object.keys(payMap).length>0&&(<>
-          <div style={{fontSize:13,fontWeight:700,color:'#6b7280',marginBottom:8}}>Ingresos por Método de Pago</div>
-          <div style={{...S.card,marginBottom:18}}>
+          <div style={{fontSize:13,fontWeight:700,color:'#6b7280',marginBottom:2}}>Dinero recibido por Método de Pago</div>
+          <div style={{fontSize:11,color:'#9ca3af',marginBottom:8}}>Bruto recibido en {year} — todavía no descuenta gastos</div>
+          <div style={{...S.card,marginBottom:12}}>
             {Object.entries(payMap).sort((a,b)=>b[1]-a[1]).map(([m,a])=>(
               <div key={m} style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid #f3f4f6'}}>
                 <span style={{fontSize:14,color:'#374151'}}>{m}</span>
@@ -1132,13 +1159,35 @@ function Reports({ transactions, inventory, costCenters }) {
               </div>
             ))}
           </div>
+          {/* Bruto → Gastos → Neto: el dinero recibido NO es la ganancia. */}
+          <div style={{...S.card,marginBottom:18,background:'#f8fafc'}}>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #eef2f7'}}>
+              <span style={{fontSize:13,color:'#6b7280'}}>Bruto recibido</span>
+              <span style={{fontSize:14,fontWeight:700,color:'#16a34a'}}>{fmt(total.income)}</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #eef2f7'}}>
+              <span style={{fontSize:13,color:'#6b7280'}}>− Gastos</span>
+              <span style={{fontSize:14,fontWeight:700,color:'#dc2626'}}>{fmt(total.expense)}</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0 4px'}}>
+              <span style={{fontSize:14,fontWeight:800,color:'#111827'}}>✅ Neto disponible</span>
+              <span style={{fontSize:18,fontWeight:800,color:total.net>=0?'#1d4ed8':'#dc2626'}}>{fmt(total.net)}</span>
+            </div>
+            <div style={{fontSize:11,color:'#9ca3af',marginTop:4,lineHeight:1.5}}>
+              Esto es lo que de verdad te queda en {year}. El neto mes por mes está en la tabla de arriba.
+            </div>
+          </div>
         </>)}
       </>)}
 
       {rTab==='performers' && (<>
+        <div style={{fontSize:11,color:'#9ca3af',marginBottom:12,lineHeight:1.6}}>
+          Ordenado por ganancia en {year} · 🥇 = más rentable. Calculado de tus ingresos
+          enlazados a cada artículo. Una venta sin costo conocido se marca «sin costo».
+        </div>
         {performers.length===0
           ? <div style={{textAlign:'center',padding:'40px 0',color:'#9ca3af',fontSize:14}}>
-              Sin ventas registradas todavía.<br/>Los mejores artículos aparecerán aquí.
+              Sin ventas registradas en {year}.<br/>Los mejores artículos aparecerán aquí.
             </div>
           : performers.map((item,i)=>(
             <div key={item.id} style={S.card}>
@@ -1153,7 +1202,7 @@ function Reports({ transactions, inventory, costCenters }) {
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:14,fontWeight:700,color:'#111827',overflow:'hidden',
                     textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                    {item.type==='plant'?'🌿':'📦'} {item.name}
+                    {typeIcon(item.type)} {item.name}
                   </div>
                   <div style={{fontSize:11,color:item.cc?.color,fontWeight:600}}>{item.cc?.name}</div>
                 </div>
@@ -1161,15 +1210,17 @@ function Reports({ transactions, inventory, costCenters }) {
                   <div style={{fontSize:16,fontWeight:800,color:item.profit>=0?'#16a34a':'#dc2626'}}>
                     {item.profit>=0?'+':''}{fmt(item.profit)}
                   </div>
-                  {item.roi!=null&&<div style={{fontSize:11,color:'#6b7280'}}>ROI {item.roi.toFixed(0)}%</div>}
+                  {item.hasCost
+                    ? (item.roi!=null&&<div style={{fontSize:11,color:'#6b7280'}}>ROI {item.roi.toFixed(0)}%</div>)
+                    : <div style={{fontSize:10,color:'#f59e0b',fontWeight:600}}>sin costo</div>}
                 </div>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
                 {[
-                  ['Ventas/Cos.',`${item.salesCnt}x`,'#7c3aed'],
+                  ['Vendido',`${item.salesCnt}x`,'#7c3aed'],
+                  ['Ingreso',fmt(item.rev),'#16a34a'],
+                  ['Costo',item.hasCost?fmt(item.cost):'—','#dc2626'],
                   ['Promedio',fmt(item.avgSale),'#0891b2'],
-                  ['En stock',`${item.days}d`,'#6b7280'],
-                  ['$/día',item.profPerDay>0?`$${item.profPerDay.toFixed(2)}`:'—','#16a34a'],
                 ].map(([l,v,c])=>(
                   <div key={l} style={{background:'#f9fafb',borderRadius:8,padding:'7px 4px',textAlign:'center'}}>
                     <div style={{fontSize:9,color:'#9ca3af',fontWeight:700,textTransform:'uppercase'}}>{l}</div>
@@ -1554,7 +1605,7 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onEdit, on
       <div style={{padding:'12px 16px 8px',borderBottom:'1px solid #e5e7eb',
         background:'#fafafa',flexShrink:0}}>
         <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:10,marginBottom:4}}>
-          {[['all','🗂️ Todos'],['product','📦 Artículos'],['plant','🌿 Plantas'],['supply','🧪 Insumos']].map(([v,l])=>(
+          {[['all','🗂️ Todos'],['product','📦 Artículos'],['plant','🌿 Plantas'],['animal','🦐 Animales'],['supply','🧪 Insumos']].map(([v,l])=>(
             <Chip key={v} label={l} active={tab===v} onClick={()=>setTab(v)}/>
           ))}
         </div>
@@ -1575,7 +1626,7 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onEdit, on
             </div>
           : filtered.map(item=>{
               const cc=costCenters.find(c=>c.id===item.ccId);
-              const isPlant=item.type==='plant', isSupply=item.type==='supply';
+              const isPlant=isMulti(item.type), isSupply=item.type==='supply';
               const salesCnt=item.sales?.length||0;
               const totalRev=(item.sales||[]).reduce((s,x)=>s+x.salePrice,0);
               const profit=totalRev-item.purchasePrice;
@@ -1687,7 +1738,7 @@ function Inventory({ inventory, costCenters, onAdd, onSell, onDelete, onEdit, on
       {/* Add button */}
       <div style={{padding:'12px 16px',background:'#ffffff',
         borderTop:'1px solid #e5e7eb',flexShrink:0}}>
-        <button onClick={onAdd} style={S.btn()}>+ Agregar Artículo / Planta / Insumo</button>
+        <button onClick={onAdd} style={S.btn()}>+ Agregar Artículo / Planta / Animal / Insumo</button>
       </div>
 
       {/* Modals */}

@@ -47,7 +47,7 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS inventory (
     id             TEXT PRIMARY KEY,
-    type           TEXT NOT NULL CHECK(type IN ('product','plant','supply')),
+    type           TEXT NOT NULL CHECK(type IN ('product','plant','supply','animal')),
     name           TEXT NOT NULL,
     purchase_date  TEXT NOT NULL,
     purchase_price REAL NOT NULL DEFAULT 0,
@@ -105,6 +105,46 @@ try {
   db.exec('ALTER TABLE cost_centers ADD COLUMN photo_path TEXT');
   console.log('[DB] Migration OK: cost_centers.photo_path added.');
 } catch { /* already exists */ }
+
+// ── Safe migration: allow 'animal' in inventory.type ──────
+// SQLite can't ALTER a CHECK constraint in place, so for existing DBs we
+// rebuild the table once. FKs are turned off during the swap so the
+// inventory_sales ON DELETE CASCADE never fires while we drop the old table.
+try {
+  const tbl = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='inventory'").get();
+  if (tbl && tbl.sql && !tbl.sql.includes("'animal'")) {
+    const COLS = 'id,type,name,purchase_date,purchase_price,cc_id,qty,unit,notes,status,created_at,photo_path,selling_price,description,is_available';
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE inventory_new (
+          id             TEXT PRIMARY KEY,
+          type           TEXT NOT NULL CHECK(type IN ('product','plant','supply','animal')),
+          name           TEXT NOT NULL,
+          purchase_date  TEXT NOT NULL,
+          purchase_price REAL NOT NULL DEFAULT 0,
+          cc_id          TEXT NOT NULL,
+          qty            REAL NOT NULL DEFAULT 1,
+          unit           TEXT NOT NULL DEFAULT 'unidad',
+          notes          TEXT,
+          status         TEXT NOT NULL DEFAULT 'available',
+          created_at     TEXT DEFAULT (datetime('now')),
+          photo_path     TEXT,
+          selling_price  REAL,
+          description    TEXT,
+          is_available   INTEGER NOT NULL DEFAULT 1
+        );
+        INSERT INTO inventory_new (${COLS}) SELECT ${COLS} FROM inventory;
+        DROP TABLE inventory;
+        ALTER TABLE inventory_new RENAME TO inventory;
+      `);
+    })();
+    db.pragma('foreign_keys = ON');
+    console.log('[DB] Migration OK: inventory.type now allows animal.');
+  }
+} catch (e) {
+  console.error('[DB] animal migration error:', e.message);
+}
 
 // ── Seed default cost centers if brand new ────────────────
 const ccCount = db.prepare('SELECT COUNT(*) AS c FROM cost_centers').get().c;
@@ -319,7 +359,7 @@ app.post('/api/inventory/:itemId/sales', (req, res) => {
     VALUES (?,?,?,?,?,?,?)`)
     .run(id, itemId, saleDate, salePrice, platform||null, payment||'Efectivo', notes||null);
   const item = db.prepare('SELECT type FROM inventory WHERE id=?').get(itemId);
-  if (item && item.type !== 'plant') {
+  if (item && item.type !== 'plant' && item.type !== 'animal') {
     db.prepare("UPDATE inventory SET status='sold' WHERE id=?").run(itemId);
   }
   res.json({ ok: true });
