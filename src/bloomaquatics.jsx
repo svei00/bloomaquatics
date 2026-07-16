@@ -551,6 +551,253 @@ function EditInvModal({ item, costCenters, onSave, onClose }) {
 }
 
 
+/* ── MODO REPUBLICAR (OfferUp copy/paste helper) ─────────────
+   100% client-side, sin endpoint nuevo. Ver docs/offerup-copy-helper-handoff.md */
+
+// Un solo lugar para editar la ciudad y el pie de emojis.
+const REPUBLISH_CONFIG = {
+  CITY_FOR_LISTINGS: 'Colton, California', // vacío ('') omite la línea de pickup
+  EMOJI_FOOTER_ENABLED: false,
+};
+
+// Diccionario de nombres científicos: [substring en minúsculas, nombre científico].
+// Se revisa en orden — la primera coincidencia gana. Sin match → se omite, sin error.
+const PLANT_SCIENTIFIC_NAMES = [
+  ['cryptocoryne wendtii green',    'Cryptocoryne wendtii "Green"'],
+  ['cryptocoryne wendtii brownie',  'Cryptocoryne wendtii "Brown"'],
+  ['cryptocoryne wendtii tropical', 'Cryptocoryne wendtii "Tropica"'],
+  ['retrospiralis',                 'Cryptocoryne retrospiralis'],
+  ['cryptocoryne',                  'Cryptocoryne wendtii'],
+  ['anubias nana',                  'Anubias barteri var. nana'],
+  ['anubias panda',                 'Anubias barteri var. nana "Panda"'],
+  ['anubias',                       'Anubias barteri'],
+  ['vallisneria',                   'Vallisneria spiralis'],
+  ['limnophila',                    'Limnophila sessiliflora'],
+  ['sagittaria',                    'Sagittaria subulata'],
+  ['java moss',                     'Taxiphyllum barbieri'],
+  ['weeping moss',                  'Vesicularia ferriei'],
+  ['christmas moss',                'Vesicularia montagnei'],
+  ['ludwigia',                      'Ludwigia repens "Super Red"'],
+  ['tiger lotus',                   'Nymphaea zenkeri'],
+  ['amazon sword',                  'Echinodorus amazonicus'],
+  ['ozelot',                        'Echinodorus "Ozelot"'],
+  ['red ruby',                      'Echinodorus "Red Ruby"'],
+  ['red flame',                     'Echinodorus "Red Flame"'],
+  ['water lettuce',                 'Pistia stratiotes'],
+  ['duckweed',                      'Lemna minor'],
+  ['frogbit',                       'Limnobium laevigatum'],
+  ['water wisteria',                'Hygrophila difformis'],
+  ['pino de agua',                  'Hygrophila difformis'],
+];
+
+function findScientificName(name) {
+  const n = normName(name);
+  const hit = PLANT_SCIENTIFIC_NAMES.find(([key]) => n.includes(key));
+  return hit ? hit[1] : null;
+}
+
+// Solo plant y product son republicables — animal y supply quedan excluidos por código
+// (OfferUp prohíbe animales vivos; supply es insumo interno, no producto).
+const isRepublishable = item => item.type === 'plant' || item.type === 'product';
+const republishExcludeReason = item =>
+  item.type === 'animal' ? 'OfferUp prohíbe animales vivos' :
+  item.type === 'supply' ? 'Insumo interno' : null;
+
+function buildTitle(item) {
+  if (item.type !== 'plant') return item.name;
+  const SUFFIX = ' – Live Aquarium Plant';
+  const MAX = 60;
+  const sci = findScientificName(item.name);
+  const withSci = sci ? `${item.name} (${sci})${SUFFIX}` : `${item.name}${SUFFIX}`;
+  // El sufijo "Live Aquarium Plant" nunca se omite (es el término que buscan los
+  // compradores); si no cabe con el nombre científico, se omite el científico primero.
+  return withSci.length <= MAX || !sci ? withSci : `${item.name}${SUFFIX}`;
+}
+
+function buildDescription(item, config = REPUBLISH_CONFIG) {
+  const ownerText = (item.description || '').trim();
+  const pickup = config.CITY_FOR_LISTINGS ? `Pickup in ${config.CITY_FOR_LISTINGS}.` : '';
+  if (item.type === 'plant') {
+    const sci = findScientificName(item.name);
+    return [ownerText, 'Live freshwater aquarium plant.', sci ? `${sci}.` : '', pickup]
+      .filter(Boolean).join(' ');
+  }
+  return [ownerText, pickup].filter(Boolean).join(' ');
+}
+
+// Número plano sin símbolo — el campo de precio de OfferUp es numérico.
+function buildPrice(item) {
+  const n = +item.sellingPrice;
+  if (!Number.isFinite(n)) return '';
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+const REPUBLISH_SEL_KEY = 'bloomRepublishSelection';
+const REPUBLISH_IDX_KEY = 'bloomRepublishIndex';
+
+function CopyField({ label, value }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1000);
+    } catch { /* clipboard bloqueado — silencioso, el usuario puede seleccionar a mano */ }
+  };
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:11, color:'#9ca3af', fontWeight:600 }}>{label}</div>
+        <div style={{ fontSize:13, color:'#111827', overflow:'hidden', textOverflow:'ellipsis',
+          whiteSpace:'nowrap' }}>{value || '—'}</div>
+      </div>
+      <button onClick={doCopy} disabled={!value} style={{
+        minWidth:44, minHeight:44, borderRadius:10, border:'none', flexShrink:0,
+        background: copied ? '#16a34a' : '#f5f3ff', color: copied ? 'white' : '#7c3aed',
+        fontSize:18, cursor: value ? 'pointer' : 'default', opacity: value ? 1 : 0.4,
+      }}>{copied ? '✓' : '📋'}</button>
+    </div>
+  );
+}
+
+function RepublishCard({ item, costCenters }) {
+  const cc    = costCenters.find(c => c.id === item.ccId);
+  const url   = photoUrl(item.photoPath);
+  // Variables locales, no props directas — así v2 (campo editable) solo agrega un <input>.
+  const title = buildTitle(item);
+  const desc  = buildDescription(item);
+  const price = buildPrice(item);
+  return (
+    <div style={{ ...S.card, scrollSnapAlign:'center', flexShrink:0, width:'100%',
+      boxSizing:'border-box' }}>
+      <div style={{ display:'flex', gap:10, marginBottom:12 }}>
+        <PhotoThumb photoPath={item.photoPath} type={item.type} size={52}/>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontWeight:700, fontSize:14, color:'#111827', overflow:'hidden',
+            textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</div>
+          {cc && <div style={{ fontSize:11, color:cc.color }}>{cc.name}</div>}
+        </div>
+      </div>
+      <CopyField label="Título"      value={title}/>
+      <CopyField label="Descripción" value={desc}/>
+      <CopyField label="Precio"      value={price}/>
+      <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>
+        Categoría y foto: manuales en OfferUp
+      </div>
+    </div>
+  );
+}
+
+function RepublishMode({ inventory, costCenters, onClose }) {
+  const publishable = inventory.filter(i => isRepublishable(i) && i.isAvailable !== false);
+
+  const [selected, setSelected] = useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(REPUBLISH_SEL_KEY) || '[]');
+      const validIds = new Set(publishable.map(i => i.id));
+      return saved.filter(id => validIds.has(id));
+    } catch { return []; }
+  });
+  const [screen, setScreen] = useState(selected.length > 0 ? 'list' : 'select');
+  const [showAll, setShowAll] = useState(false);
+  const scrollRef = useRef(null);
+  const items = publishable.filter(i => selected.includes(i.id));
+
+  useEffect(() => {
+    sessionStorage.setItem(REPUBLISH_SEL_KEY, JSON.stringify(selected));
+  }, [selected]);
+
+  // Rehidratar posición al montar (split-screen puede recargar la pestaña).
+  useEffect(() => {
+    if (screen !== 'list' || !scrollRef.current) return;
+    const idx = parseInt(sessionStorage.getItem(REPUBLISH_IDX_KEY) || '0', 10) || 0;
+    scrollRef.current.scrollTo({ left: idx * scrollRef.current.clientWidth, behavior: 'auto' });
+  }, [screen]);
+
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const idx = Math.round(scrollRef.current.scrollLeft / scrollRef.current.clientWidth);
+    sessionStorage.setItem(REPUBLISH_IDX_KEY, String(idx));
+  };
+
+  const toggle = id => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+
+  return (
+    <div style={{ position:'absolute', inset:0, zIndex:500, background:'#f9fafb',
+      display:'flex', flexDirection:'column' }}>
+      <div style={{ background:'#7c3aed', color:'white', padding:'14px 16px',
+        display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <div style={{ fontWeight:700, fontSize:16 }}>
+          🔁 Modo Republicar {screen==='list' && `(${items.length})`}
+        </div>
+        <button onClick={onClose} style={{ background:'rgba(255,255,255,0.2)', border:'none',
+          borderRadius:'50%', width:36, height:36, color:'white', fontSize:20, cursor:'pointer' }}>×</button>
+      </div>
+
+      {screen === 'select' && (
+        <>
+          <div style={{ padding:'10px 16px', display:'flex', justifyContent:'space-between',
+            alignItems:'center', flexShrink:0 }}>
+            <span style={{ fontSize:12, color:'#6b7280' }}>Solo artículos y plantas disponibles</span>
+            <button onClick={() => setShowAll(v => !v)} style={{ background:'none', border:'none',
+              color:'#7c3aed', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+              {showAll ? 'Ocultar excluidos' : 'Ver todos'}
+            </button>
+          </div>
+          <div style={{ flex:1, overflowY:'auto', padding:'0 16px' }}>
+            {publishable.map(item => (
+              <label key={item.id} style={{ display:'flex', alignItems:'center', gap:10,
+                padding:'10px 0', borderBottom:'1px solid #e5e7eb', cursor:'pointer' }}>
+                <input type="checkbox" checked={selected.includes(item.id)}
+                  onChange={() => toggle(item.id)}
+                  style={{ width:22, height:22, accentColor:'#7c3aed', flexShrink:0 }}/>
+                <PhotoThumb photoPath={item.photoPath} type={item.type} size={40}/>
+                <span style={{ fontSize:14, color:'#111827', overflow:'hidden',
+                  textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</span>
+              </label>
+            ))}
+            {showAll && inventory.filter(i => !isRepublishable(i)).map(item => (
+              <div key={item.id} style={{ display:'flex', alignItems:'center', gap:10,
+                padding:'10px 0', borderBottom:'1px solid #e5e7eb', opacity:0.5 }}>
+                <PhotoThumb photoPath={item.photoPath} type={item.type} size={40}/>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:14, color:'#111827', overflow:'hidden',
+                    textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</div>
+                  <div style={{ fontSize:11, color:'#dc2626' }}>{republishExcludeReason(item)}</div>
+                </div>
+              </div>
+            ))}
+            <div style={{ height:24 }}/>
+          </div>
+          <div style={{ padding:'12px 16px', background:'#fff', borderTop:'1px solid #e5e7eb', flexShrink:0 }}>
+            <button disabled={selected.length===0} onClick={() => setScreen('list')}
+              style={S.btn(selected.length ? '#7c3aed' : '#d1d5db')}>
+              Republicar seleccionados ({selected.length})
+            </button>
+          </div>
+        </>
+      )}
+
+      {screen === 'list' && (
+        <>
+          <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowX:'auto',
+            overflowY:'auto', display:'flex', scrollSnapType:'x mandatory', padding:'16px' }}>
+            {items.length === 0
+              ? <div style={{ margin:'auto', color:'#9ca3af', fontSize:14 }}>Nada seleccionado</div>
+              : items.map(item => <RepublishCard key={item.id} item={item} costCenters={costCenters}/>)}
+          </div>
+          <div style={{ padding:'12px 16px', background:'#fff', borderTop:'1px solid #e5e7eb',
+            flexShrink:0 }}>
+            <button onClick={() => setScreen('select')} style={{ ...S.btn('#f3f4f6', '#374151') }}>
+              ← Editar selección
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ── VITRINA ─────────────────────────────────────────────── */
 function Vitrina({ inventory, costCenters }) {
   const [viewMode,setViewMode]   = useState('grid');
@@ -568,6 +815,7 @@ function Vitrina({ inventory, costCenters }) {
   const [filterOpen,setFO]       = useState(false);
   const [detail,setDetail]       = useState(null);
   const [generating,setGen]      = useState(false);
+  const [republishOpen,setRO]    = useState(false);
 
   const filtered = inventory
     .filter(i => i.type !== 'supply')
@@ -950,6 +1198,10 @@ function Vitrina({ inventory, costCenters }) {
               padding:'8px 10px',cursor:generating?'wait':'pointer',color:'white',fontSize:15,
               minHeight:40,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
             {generating?'⏳':'🖼️'}</button>
+          <button onClick={()=>setRO(true)} title="Modo Republicar (OfferUp)"
+            style={{background:'#0891b2',border:'none',borderRadius:10,padding:'8px 10px',
+              cursor:'pointer',color:'white',fontSize:15,minHeight:40,flexShrink:0,
+              display:'flex',alignItems:'center',justifyContent:'center'}}>🔁</button>
         </div>
 
         {/* Row 2: collapsible filters */}
@@ -1054,6 +1306,7 @@ function Vitrina({ inventory, costCenters }) {
       </div>
 
       {detail&&<DetailModal item={detail} costCenters={costCenters} onClose={()=>setDetail(null)}/>}
+      {republishOpen&&<RepublishMode inventory={inventory} costCenters={costCenters} onClose={()=>setRO(false)}/>}
     </div>
   );
 }
