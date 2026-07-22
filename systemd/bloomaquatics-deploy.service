@@ -1,0 +1,11 @@
+[Unit]
+Description=Bloom Aquatics — deploy if origin/main has a green build
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Change this if your checkout lives somewhere other than ~/bloomaquatics,
+# and change the User= to whichever account owns that checkout and runs pm2.
+WorkingDirectory=%h/bloomaquatics
+ExecStart=%h/bloomaquatics/scripts/deploy.sh

@@ -5,3 +5,7 @@ bloom.db-*
 uploads/
 backups/
 .env
+
+# Copy-review working sheet: embeds purchase_price so the owner can make
+# pricing decisions. Costs never leave home, and this repo is public.
+docs/plant-copy-review/

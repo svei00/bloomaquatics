@@ -1,0 +1,50 @@
+name: build
+
+# Proves every push to main actually builds, in the cloud, before the Pi
+# touches it. The Pi reads this workflow's result and refuses to deploy a
+# commit that didn't go green — so a broken build never reaches the family.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: this workflow only ever reads the repo.
+permissions:
+  contents: read
+
+# A newer push supersedes an in-flight run. A cancelled run is not a
+# success, so the Pi simply waits for the newer commit's own green check.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keep this matching `node -v` on the DietPi, so a version-specific
+      # build failure shows up here rather than on the Pi.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A syntax error in server.js would crash pm2 and take the site down
+      # on restart. Catching it here costs a second.
+      - name: Syntax-check the server
+        run: node --check server.js
+
+      - name: Syntax-check the deploy script
+        run: bash -n scripts/deploy.sh
+
+      - name: Build the frontend
+        run: npm run build
+
+      - name: Confirm the build produced something servable
+        run: test -s dist/index.html
