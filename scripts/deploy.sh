@@ -16,7 +16,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCK_FILE="/tmp/bloomaquatics-deploy.lock"
 LOG_FILE="$REPO_DIR/deploy.log"
-PM2_APP="bloom-aquatics"
+PM2_APP="bloomaquatics"
 BRANCH="main"
 CHECK_NAME="build"          # must match the job id in .github/workflows/build-check.yml
 
