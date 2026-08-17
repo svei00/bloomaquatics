@@ -60,8 +60,14 @@ if [ -z "$RESPONSE" ]; then
   exit 0
 fi
 
-CONCLUSION="$(echo "$RESPONSE" | grep -o "\"name\":\"${CHECK_NAME}\"[^}]*\"conclusion\":\"[a-z_]*\"" \
-  | grep -o '"conclusion":"[a-z_]*"' | head -1 | cut -d'"' -f4 || true)"
+CONCLUSION="$(echo "$RESPONSE" | node -e '
+  let data = "";
+  process.stdin.on("data", (chunk) => { data += chunk; });
+  process.stdin.on("end", () => {
+    const run = JSON.parse(data).check_runs.find((r) => r.name === process.argv[1]);
+    process.stdout.write(run ? run.conclusion || "" : "");
+  });
+' "$CHECK_NAME")"
 
 if [ "$CONCLUSION" != "success" ]; then
   log "Commit $REMOTE_SHA build check is '${CONCLUSION:-not finished yet}' — waiting."

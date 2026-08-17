@@ -5,6 +5,7 @@ bloom.db-*
 uploads/
 backups/
 .env
+deploy.log
 
 # Copy-review sheet: index.html + README embed purchase_price so the owner
 # can make pricing decisions. Costs never leave home, and this repo is public.
