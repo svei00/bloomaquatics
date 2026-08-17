@@ -11,6 +11,19 @@
 #  node_modules/ wholesale, or anything with git clean / reset
 #  --hard. A `git pull` on a clean checkout is the only mutation.
 # ─────────────────────────────────────────────────────────────
+# ── Pin the Node version instead of trusting whatever's on PATH ──
+# The system-wide `node` on this Pi gets bumped for other apps living on
+# the same host (see happyface, which needs >=22.5.0) and better-sqlite3's
+# native build breaks on Node versions newer than what build-check.yml
+# tests against. Use the same major version as CI via nvm, so a system
+# Node upgrade for another project can't silently break this deploy again.
+# nvm's own script isn't written for `set -euo pipefail`, so this has to
+# run before strict mode is turned on below.
+export NVM_DIR="/root/.nvm"
+# shellcheck source=/dev/null
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+nvm use 20 >/dev/null
+
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -80,6 +93,11 @@ log "Build check green for $REMOTE_SHA. Deploying..."
 git pull --ff-only origin "$BRANCH" 2>&1 | tee -a "$LOG_FILE"
 npm ci 2>&1 | tee -a "$LOG_FILE"
 npm run build 2>&1 | tee -a "$LOG_FILE"
-pm2 restart "$PM2_APP" 2>&1 | tee -a "$LOG_FILE"
+# --update-env: pm2 caches the env (incl. PATH) from whenever the process
+# last started with a fresh one, and a plain restart reuses that stale
+# cache. Without this, pm2 can keep launching the app against a different
+# node than the one that just built its native modules — better-sqlite3's
+# native binary is ABI-locked to the node version it was built against.
+pm2 restart "$PM2_APP" --update-env 2>&1 | tee -a "$LOG_FILE"
 
 log "Deployed $REMOTE_SHA successfully."
