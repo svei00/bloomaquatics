@@ -22,6 +22,18 @@ const typeIcon  = t => t==='plant' ? '🌿' : t==='animal' ? '🦐' : t==='suppl
 const typeLabel = t => t==='plant' ? 'Planta' : t==='animal' ? 'Animal' : t==='supply' ? 'Insumo' : 'Artículo';
 const normName  = s => (s||'').toLowerCase().trim();
 
+// ── Expense categories ────────────────────────────────────
+// 'inventario' = ligado a Artículo/Planta/Animal/Insumo (comportamiento de siempre).
+// 'equipo'     = racks, totes, luces de cultivo, herramientas — no es para revender.
+// 'operacion'  = renta, servicios, transporte, marketing, otros gastos fijos.
+// Es solo una etiqueta en `transactions.category` — reclasificar no toca inventario ni ventas.
+const EXPENSE_CATEGORIES = [
+  ['inventario', '📦', 'Inventario', 'Para reventa/consumo'],
+  ['equipo',     '🔧', 'Equipo',     'Racks, totes, luces…'],
+  ['operacion',  '🏠', 'Operación',  'Renta, servicios, marketing…'],
+];
+const categoryLabel = c => EXPENSE_CATEGORIES.find(([v])=>v===c)?.[2] || null;
+
 const api = {
   get:    url     => fetch(url).then(r=>r.json()),
   post:   (url,b) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json()),
@@ -162,12 +174,12 @@ function Modal({ title, onClose, children }) {
 }
 
 /* ── HYBRID AUTOCOMPLETE ─────────────────────────────────── */
-function AutoDesc({ value, onChange, onPick, inventory, placeholder }) {
+function AutoDesc({ value, onChange, onPick, inventory, placeholder, hideWarning }) {
   const [open, setOpen] = useState(false);
   const lower    = (value||'').toLowerCase().trim();
   const matches  = lower.length>=2 ? inventory.filter(i=>i.name.toLowerCase().includes(lower)).slice(0,6) : [];
   const inCatalog = lower.length>2 && inventory.some(i=>i.name.toLowerCase()===lower);
-  const showWarn  = lower.length>2 && !inCatalog && !open;
+  const showWarn  = !hideWarning && lower.length>2 && !inCatalog && !open;
 
   return (
     <div style={{ position:'relative', marginBottom:12 }}>
@@ -213,6 +225,7 @@ function TxnModal({ costCenters, inventory, onSave, onClose }) {
   const [payment,setPay]   = useState('Efectivo');
   const [notes,setNotes]   = useState('');
   const [linkedItemId,setLinkedItemId] = useState(null); // FK → inventory.id (for reportes por artículo)
+  const [category,setCategory] = useState('inventario');
 
   return (
     <Modal title="Nueva Transacción" onClose={onClose}>
@@ -224,11 +237,28 @@ function TxnModal({ costCenters, inventory, onSave, onClose }) {
             background: type===t?c+'18':'transparent', color: type===t?c:'#6b7280', fontSize:15, fontWeight:700 }}>{l}</button>
         ))}
       </div>
+      {type==='expense' && (<>
+        <label style={S.label}>¿Qué tipo de gasto es?</label>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
+          {EXPENSE_CATEGORIES.map(([v,ic,lb,sub])=>(
+            <button key={v} onClick={()=>setCategory(v)} title={sub} style={{
+              padding:'10px 4px',borderRadius:10,textAlign:'center',cursor:'pointer',
+              border:`2px solid ${category===v?'#7c3aed':'#e5e7eb'}`,
+              background:category===v?'#f5f3ff':'#fafafa',color:category===v?'#7c3aed':'#6b7280'}}>
+              <div style={{fontSize:18,marginBottom:2}}>{ic}</div>
+              <div style={{fontSize:11,fontWeight:700}}>{lb}</div>
+            </button>
+          ))}
+        </div>
+      </>)}
       <label style={S.label}>Fecha</label>
       <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={S.input}/>
       <label style={S.label}>Descripción *</label>
       <AutoDesc value={desc} onChange={setDesc} onPick={it=>setLinkedItemId(it?.id||null)} inventory={inventory}
-        placeholder={type==='income'?'Ej: Stroller, Java fern, OfferUp…':'Ej: Seachem Flourish, gas…'}/>
+        hideWarning={type==='expense' && category!=='inventario'}
+        placeholder={type==='income'?'Ej: Stroller, Java fern, OfferUp…':
+          category==='equipo'?'Ej: Rack de metal, totes, luz de cultivo…':
+          category==='operacion'?'Ej: Renta, luz, gasolina…':'Ej: Seachem Flourish, gas…'}/>
       <label style={S.label}>Monto ($) *</label>
       <input type="number" step="0.01" min="0" placeholder="0.00"
         value={amount} onChange={e=>setAmount(e.target.value)} style={S.input}/>
@@ -247,9 +277,90 @@ function TxnModal({ costCenters, inventory, onSave, onClose }) {
         if(!desc||!amount) return;
         // Fallback: if no suggestion was picked but the text matches a catalog name exactly, link it anyway.
         const link = linkedItemId || inventory.find(i=>normName(i.name)===normName(desc))?.id || null;
-        onSave({id:uid(),date,type,desc,amount:parseFloat(amount),ccId,payment,notes,linkedItemId:link});
+        onSave({id:uid(),date,type,desc,amount:parseFloat(amount),ccId,payment,notes,
+          linkedItemId:link, category:type==='expense'?category:null});
         onClose();
       }}>Guardar</button>
+    </Modal>
+  );
+}
+
+/* ── EDIT TRANSACTION MODAL ──────────────────────────────────
+   Reclasificar (categoría, monto, fecha, etc.) es seguro: solo hace
+   UPDATE sobre la fila de transactions, nunca toca inventario ni ventas. */
+function EditTxnModal({ txn, costCenters, inventory, onSave, onClose }) {
+  const [type,setType]     = useState(txn.type);
+  const [date,setDate]     = useState(txn.date);
+  const [desc,setDesc]     = useState(txn.desc);
+  const [amount,setAmount] = useState(String(txn.amount));
+  const [ccId,setCcId]     = useState(txn.ccId);
+  const [payment,setPay]   = useState(txn.payment);
+  const [notes,setNotes]   = useState(txn.notes||'');
+  const [linkedItemId,setLinkedItemId] = useState(txn.linkedItemId||null);
+  const [category,setCategory] = useState(txn.category||'inventario');
+
+  return (
+    <Modal title="✏️ Editar Transacción" onClose={onClose}>
+      <div style={{background:'#fffbeb',border:'1px solid #f59e0b',borderRadius:10,
+        padding:'10px 14px',marginBottom:14,fontSize:12,color:'#92400e'}}>
+        ⚠️ Puedes corregir cualquier campo, incluida la categoría del gasto. No afecta inventario ni ventas.
+      </div>
+      <div style={{display:'flex',gap:10,marginBottom:18}}>
+        {[['income','💰 Ingreso','#16a34a'],['expense','💸 Gasto','#dc2626']].map(([t,l,c])=>(
+          <button key={t} onClick={()=>setType(t)} style={{
+            flex:1, padding:'13px', borderRadius:12, cursor:'pointer', minHeight:52,
+            border:`2px solid ${type===t?c:'#e5e7eb'}`,
+            background: type===t?c+'18':'transparent', color: type===t?c:'#6b7280', fontSize:15, fontWeight:700 }}>{l}</button>
+        ))}
+      </div>
+      {type==='expense' && (<>
+        <label style={S.label}>¿Qué tipo de gasto es?</label>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
+          {EXPENSE_CATEGORIES.map(([v,ic,lb,sub])=>(
+            <button key={v} onClick={()=>setCategory(v)} title={sub} style={{
+              padding:'10px 4px',borderRadius:10,textAlign:'center',cursor:'pointer',
+              border:`2px solid ${category===v?'#7c3aed':'#e5e7eb'}`,
+              background:category===v?'#f5f3ff':'#fafafa',color:category===v?'#7c3aed':'#6b7280'}}>
+              <div style={{fontSize:18,marginBottom:2}}>{ic}</div>
+              <div style={{fontSize:11,fontWeight:700}}>{lb}</div>
+            </button>
+          ))}
+        </div>
+      </>)}
+      <label style={S.label}>Fecha</label>
+      <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={S.input}/>
+      <label style={S.label}>Descripción *</label>
+      <AutoDesc value={desc} onChange={setDesc} onPick={it=>setLinkedItemId(it?.id||null)} inventory={inventory}
+        hideWarning={type==='expense' && category!=='inventario'}
+        placeholder="Descripción"/>
+      <label style={S.label}>Monto ($) *</label>
+      <input type="number" step="0.01" min="0" placeholder="0.00"
+        value={amount} onChange={e=>setAmount(e.target.value)} style={S.input}/>
+      <label style={S.label}>Centro de Costo</label>
+      <select value={ccId} onChange={e=>setCcId(e.target.value)} style={S.input}>
+        {costCenters.map(cc=><option key={cc.id} value={cc.id}>{cc.name}</option>)}
+      </select>
+      <label style={S.label}>Método de Pago</label>
+      <select value={payment} onChange={e=>setPay(e.target.value)} style={S.input}>
+        {PAYMENTS.map(p=><option key={p}>{p}</option>)}
+      </select>
+      <label style={S.label}>Notas</label>
+      <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+        style={{...S.input,height:64,resize:'vertical'}} placeholder="Plataforma, cliente…"/>
+      <div style={{display:'flex',gap:10}}>
+        <button onClick={onClose} style={{flex:1,padding:'14px',borderRadius:12,
+          background:'#f3f4f6',border:'none',color:'#374151',fontSize:15,cursor:'pointer',minHeight:50}}>
+          Cancelar</button>
+        <button onClick={()=>{
+          if(!desc||!amount) return;
+          const link = linkedItemId || inventory.find(i=>normName(i.name)===normName(desc))?.id || null;
+          onSave(txn.id,{date,type,desc,amount:parseFloat(amount),ccId,payment,notes,
+            linkedItemId:link, category:type==='expense'?category:null});
+          onClose();
+        }} style={{flex:2,padding:'14px',borderRadius:12,background:'#7c3aed',
+          color:'white',border:'none',fontSize:15,fontWeight:700,cursor:'pointer',minHeight:50}}>
+          Guardar Cambios</button>
+      </div>
     </Modal>
   );
 }
@@ -1887,10 +1998,16 @@ function Dashboard({ transactions, inventory, costCenters, month, year, onMonthC
 }
 
 /* ── TRANSACTIONS ────────────────────────────────────────── */
-function Transactions({ transactions, inventory, costCenters, onAdd, onDelete }) {
+function Transactions({ transactions, inventory, costCenters, onAdd, onEdit, onDelete }) {
   const [fCC,setFCC]     = useState('all');
   const [fType,setFType] = useState('all');
-  const filtered = [...transactions].filter(t=>fCC==='all'||t.ccId===fCC).filter(t=>fType==='all'||t.type===fType).sort((a,b)=>b.date.localeCompare(a.date));
+  const [fCat,setFCat]   = useState('all');
+  const [editItem,setEI] = useState(null);
+  const filtered = [...transactions]
+    .filter(t=>fCC==='all'||t.ccId===fCC)
+    .filter(t=>fType==='all'||t.type===fType)
+    .filter(t=>fCat==='all'||t.category===fCat)
+    .sort((a,b)=>b.date.localeCompare(a.date));
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid #e5e7eb',background:'#fafafa',flexShrink:0}}>
@@ -1898,17 +2015,26 @@ function Transactions({ transactions, inventory, costCenters, onAdd, onDelete })
           <Chip label="Todos" active={fCC==='all'} onClick={()=>setFCC('all')}/>
           {costCenters.map(cc=><Chip key={cc.id} label={cc.name} active={fCC===cc.id} onClick={()=>setFCC(cc.id)} color={cc.color}/>)}
         </div>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,marginBottom:fType==='expense'?10:0}}>
           {[['all','Todos'],['income','💰 Ingresos'],['expense','💸 Gastos']].map(([v,l])=>(
-            <Chip key={v} label={l} active={fType===v} onClick={()=>setFType(v)}/>
+            <Chip key={v} label={l} active={fType===v} onClick={()=>{setFType(v);setFCat('all');}}/>
           ))}
         </div>
+        {fType==='expense' && (
+          <div style={{display:'flex',gap:8,overflowX:'auto'}}>
+            <Chip label="Todas las categorías" active={fCat==='all'} onClick={()=>setFCat('all')}/>
+            {EXPENSE_CATEGORIES.map(([v,ic,lb])=>(
+              <Chip key={v} label={`${ic} ${lb}`} active={fCat===v} onClick={()=>setFCat(v)}/>
+            ))}
+          </div>
+        )}
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'10px 16px'}}>
         {filtered.length===0
           ? <div style={{textAlign:'center',padding:'52px 0',color:'#9ca3af',fontSize:15}}>No hay transacciones</div>
           : filtered.map(t=>{
               const cc=costCenters.find(c=>c.id===t.ccId);
+              const catLb = t.type==='expense' ? categoryLabel(t.category) : null;
               return (
                 <div key={t.id} style={S.card}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
@@ -1916,13 +2042,16 @@ function Transactions({ transactions, inventory, costCenters, onAdd, onDelete })
                       <span style={{fontSize:24,flexShrink:0,marginTop:2}}>{t.type==='income'?'💰':'💸'}</span>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:15,fontWeight:600,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.desc}</div>
-                        <div style={S.muted}>{t.date} · <span style={{color:cc?.color}}>{cc?.name}</span> · {t.payment}</div>
+                        <div style={S.muted}>{t.date} · <span style={{color:cc?.color}}>{cc?.name}</span> · {t.payment}
+                          {catLb && catLb!=='Inventario' && <span> · <span style={{color:'#7c3aed',fontWeight:700}}>{catLb}</span></span>}
+                        </div>
                         {t.notes&&<div style={{...S.muted,fontStyle:'italic'}}>{t.notes}</div>}
                       </div>
                     </div>
                     <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0,marginLeft:8}}>
                       <span style={{fontSize:15,fontWeight:700,color:t.type==='income'?'#16a34a':'#dc2626'}}>
                         {t.type==='income'?'+':'-'}{fmt(t.amount)}</span>
+                      <button onClick={()=>setEI(t)} title="Editar / reclasificar" style={{background:'#f5f3ff',border:'none',cursor:'pointer',color:'#7c3aed',fontSize:15,minWidth:38,minHeight:38,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center'}}>✏️</button>
                       <button onClick={()=>onDelete(t.id)} style={{background:'#fef2f2',border:'none',cursor:'pointer',color:'#dc2626',fontSize:18,minWidth:38,minHeight:38,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
                     </div>
                   </div>
@@ -1934,6 +2063,10 @@ function Transactions({ transactions, inventory, costCenters, onAdd, onDelete })
       <div style={{padding:'12px 16px',background:'#ffffff',borderTop:'1px solid #e5e7eb',flexShrink:0}}>
         <button onClick={onAdd} style={S.btn()}>+ Nueva Transacción</button>
       </div>
+      {editItem && (
+        <EditTxnModal txn={editItem} costCenters={costCenters} inventory={inventory}
+          onSave={onEdit} onClose={()=>setEI(null)}/>
+      )}
     </div>
   );
 }
@@ -2146,6 +2279,10 @@ export default function App() {
 
   const addTxn  = async t      => { setTxns(p=>[...p,t]); await api.post('/api/transactions',t).catch(console.error); };
   const delTxn  = async id     => { setTxns(p=>p.filter(t=>t.id!==id)); await api.delete(`/api/transactions/${id}`).catch(console.error); };
+  const editTxn = async (id, changes) => {
+    setTxns(p=>p.map(t=>t.id===id?{...t,...changes}:t));
+    await api.patch(`/api/transactions/${id}`, changes).catch(console.error);
+  };
   const addInv  = async i      => { setInv(p=>[...p,i]); await api.post('/api/inventory',i).catch(console.error); };
   const sellInv = async (itemId,sale) => {
     setInv(p=>p.map(i=>i.id===itemId?{...i,sales:[...(i.sales||[]),sale]}:i));
@@ -2210,7 +2347,7 @@ export default function App() {
       {/* Content */}
       <div style={{flex:1,overflowY:'auto',minHeight:0}}>
         {tab==='dashboard'    && <Dashboard    transactions={transactions} inventory={inventory} costCenters={costCenters} month={month} year={year} onMonthChange={changeMonth}/>}
-        {tab==='transactions' && <Transactions transactions={transactions} inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('txn')} onDelete={delTxn}/>}
+        {tab==='transactions' && <Transactions transactions={transactions} inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('txn')} onEdit={editTxn} onDelete={delTxn}/>}
         {tab==='inventory'    && <Inventory    inventory={inventory} costCenters={costCenters} onAdd={()=>setModal('inv')} onSell={sellInv} onDelete={delInv} onEdit={editInv} onPhotoUpdate={updatePhoto}/>}
         {tab==='vitrina'      && <Vitrina      inventory={inventory} costCenters={costCenters}/>}
         {tab==='reports'      && <Reports      transactions={transactions} inventory={inventory} costCenters={costCenters}/>}
